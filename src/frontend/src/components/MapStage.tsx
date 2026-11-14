@@ -30,7 +30,14 @@ interface Props {
   spread: SpreadResult | null;
   spreadTime: number;
   spreadHorizon: number;
-  baseLayer: "dark" | "terrain" | "satellite";
+  baseLayer: "dark" | "relief" | "satellite";
+  /** Dirección del viento del día, 0–360°, desde dónde sopla. */
+  windDirDeg: number | null;
+  windSpeedMs: number | null;
+  /** La rosa de viento solo se muestra en la vista de simulación. */
+  showWind: boolean;
+  /** Cambia cuando el ancho disponible cambia; obliga a Leaflet a reencuadrar. */
+  relayoutKey: string;
 }
 
 /** Punto de cierre del poligono: tolerancia en pixeles sobre el primer vertice. */
@@ -38,23 +45,34 @@ const CLOSE_TOLERANCE_PX = 14;
 /** Tope de puntos dibujados, para no bloquear el navegador. */
 const MAX_DRAWN_POINTS = 9000;
 
+/**
+ * Capas base sin clave de API.
+ *
+ * Se retiraron las teselas de CARTO porque ahora exigen una clave y el mapa
+ * aparecía cubierto de marcas "API KEY REQUIRED". El mapa oscuro se consigue
+ * invirtiendo por CSS las teselas estándar de OpenStreetMap, que no piden
+ * clave; las otras dos vienen de servicios abiertos de Esri y OpenTopoMap.
+ */
 const BASE_LAYERS = {
   dark: {
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
+    filtered: true,
   },
-  terrain: {
+  relief: {
     url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
     attribution:
-      'Datos de mapa &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | Estilo: <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+      'Mapa &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | Estilo: <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
     maxZoom: 17,
+    filtered: false,
   },
   satellite: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "Imagenes: Esri, Maxar, Earthstar Geographics",
+    attribution: "Imágenes: Esri, Maxar, Earthstar Geographics",
     maxZoom: 18,
+    filtered: false,
   },
 } as const;
 
@@ -72,6 +90,10 @@ export function MapStage(props: Props) {
     spreadTime,
     spreadHorizon,
     baseLayer,
+    windDirDeg,
+    windSpeedMs,
+    showWind,
+    relayoutKey,
   } = props;
 
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -186,6 +208,15 @@ export function MapStage(props: Props) {
     };
   }, []);
 
+  /* ----------------------- reencuadre cuando cambia el ancho disponible -- */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    // La transición de ancho dura 220 ms en CSS.
+    const id = setTimeout(() => map.invalidateSize({ animate: false }), 260);
+    return () => clearTimeout(id);
+  }, [relayoutKey]);
+
   /* -------------------------------------------------------- capa de base -- */
   useEffect(() => {
     const map = mapRef.current;
@@ -196,8 +227,12 @@ export function MapStage(props: Props) {
       attribution: cfg.attribution,
       maxZoom: cfg.maxZoom,
       maxNativeZoom: cfg.maxZoom,
+      crossOrigin: true,
     }).addTo(map);
     baseRef.current.setZIndex(1);
+    // El tema oscuro se obtiene invirtiendo las teselas claras por CSS.
+    const pane = map.getPane("tilePane");
+    if (pane) pane.classList.toggle("tilePane--dark", cfg.filtered);
   }, [baseLayer]);
 
   /* -------------------------------------------- teclado: Esc y Enter ------ */
@@ -494,13 +529,33 @@ export function MapStage(props: Props) {
                 </span>
               </div>
             ))}
+            {showWind && windDirDeg !== null && (
+              <div className="legend__item" style={{ marginTop: 2 }}>
+                <i
+                  className="legend__swatch"
+                  style={{
+                    background: "transparent",
+                    borderLeft: "5px solid transparent",
+                    borderRight: "5px solid transparent",
+                    borderBottom: "9px solid var(--ember)",
+                    width: 0,
+                    height: 0,
+                    transform: `rotate(${windDirDeg + 180}deg)`,
+                  }}
+                />
+                <span>
+                  Viento {windSpeedMs?.toFixed(1) ?? "—"} m/s · desde{" "}
+                  {Math.round(windDirDeg)}°
+                </span>
+              </div>
+            )}
             {spread && (
               <div className="legend__item">
                 <i
                   className="legend__swatch"
                   style={{ background: "linear-gradient(90deg,#f3e55c,#e65c2f,#480f62)" }}
                 />
-                <span>Frente simulado (reciente → antiguo)</span>
+                <span>Frente simulado · Fase 2 · +6/12/24 h</span>
               </div>
             )}
           </div>

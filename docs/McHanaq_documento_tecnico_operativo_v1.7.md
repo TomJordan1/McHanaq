@@ -605,26 +605,29 @@ Una fila por fecha, territorio y sensor:
 Para el procesamiento longitudinal diario (`environmental_daily.csv`, una fila por fecha `YYYY-MM-DD` y territorio):
 
 - `date`, `territory_type`, `territory_id`
-- `t_amb_c` (temperatura ambiente a 2 m, °C)
-- `t_suelo_c` (temperatura superficial del suelo LST desde MODIS/VIIRS, °C)
+- `t_amb_c` (temperatura ambiente a 2 m, °C: `temperature_2m - 273.15`)
+- `relative_humidity_2m_pct` (humedad relativa %, calculada desde `temperature_2m` y `dewpoint_temperature_2m` de ERA5-Land vía Magnus-Tetens)
+- `t_suelo_c` (temperatura superficial del suelo LST desde MODIS/VIIRS: `valor * 0.02 - 273.15`, °C) y `lst_valid_pixel_pct` (control de nubes `< 30%`, es decir, `>= 70%` válido)
 - `wind_dir_deg` (dirección diaria del viento, 0–360°), `wind_speed_10m_ms` (m/s)
-- `elevation_m` (altura en m s.n.m.), `dem_source` (modelo DEM según época MODIS/VIIRS)
+- `elevation_m` (altura en m s.n.m.: banda `elevation` en SRTM/NASADEM, banda `DEM` en Copernicus GLO-30), `dem_source` (modelo DEM según época MODIS/VIIRS)
 
-Para el contexto mensual (`environmental_context.csv`, una fila por territorio y mes calendario; las variables estáticas pueden repetirse con su año de referencia):
+Para el contexto mensual (`environmental_context.csv`, una fila por territorio y mes calendario, agregado en `analytics/` por media aritmética y media ponderada por cobertura válida diaria):
 
 - `period_id` (`YYYY-MM`), `territory_type`, `territory_id`, `landcover_year`
 - proporciones de cobertura por grupo (`vegetation_area_pct` o campos equivalentes acordados), conservando por separado bosques, matorrales, pastizales, agricultura, áreas urbanas, suelo desnudo y agua cuando la leyenda lo permita
 - `ndvi_median`, `ndvi_anomaly` (si se procesan)
-- `precip_30d_mm`, `soil_moisture_surface` (si se procesan)
-- `t_amb_c`, `t_suelo_c`, `wind_dir_deg`, `wind_speed_10m_ms`, `temperature_2m_c`, `relative_humidity_2m_pct` (según disponibilidad)
+- `precip_30d_mm`, `soil_moisture_surface` (`volumetric_soil_water_layer_1`, m³/m³)
+- `t_amb_c`, `t_suelo_c`, `relative_humidity_2m_pct`, `wind_dir_deg`, `wind_speed_10m_ms` (media aritmética y ponderada por cobertura)
 - `elevation_m`, `dem_source` y estadísticas de pendiente (`slope_class_area_pct` o equivalentes)
 - `source_resolution`, `source_product`, `source_period_start`, `source_period_end`, `processing_version`
 
 `metadata.json` debe incluir:
 
+- `available_date_ranges_by_sensor`: rango diario `{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}` por sensor.
 - `available_periods_by_sensor`: meses completos procesados para cada sensor.
 - `common_environmental_periods`: meses para los que están disponibles los bloques ambientales obligatorios.
 - `common_analysis_periods`: intersección de los meses disponibles en los tres sensores y del contexto ambiental; se usa para comparaciones multisensor justas.
+- `min_baseline_years`: `5` (cubierto tanto por MODIS 2000–2025 como por VIIRS 2018–2025).
 
 Para una ficha de un sensor, el backend valida que el mes esté disponible para ese sensor y en `common_environmental_periods`. Para una comparación de los tres sensores, exige además que figure en `common_analysis_periods`. Solo se exponen meses preprocesados y con cobertura mínima definida por el equipo.
 
@@ -643,7 +646,10 @@ Para una ficha de un sensor, el backend valida que el mes esté disponible para 
     "date": "2026-09-01", "territory_type": "province", "territory_id": "1501",
     "sensor": "MODIS_TERRA", "fire_pixels_low": 2,
     "fire_pixels_nominal_high": 1, "valid_land_pixels": 340,
-    "expected_land_pixels_per_day": 400, "observation_coverage": 0.85
+    "expected_land_pixels_per_day": 400, "observation_coverage": 0.85,
+    "t_amb_c": 18.4, "relative_humidity_2m_pct": 42.1, "t_suelo_c": 29.7,
+    "lst_valid_pixel_pct": 88.5, "wind_dir_deg": 135.0, "wind_speed_10m_ms": 3.8,
+    "elevation_m": 2850.0, "dem_source": "COPERNICUS_GLO30"
   }]
 }
 ```

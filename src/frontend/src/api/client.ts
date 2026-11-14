@@ -1,13 +1,14 @@
 /**
- * Unico punto de acceso a datos del frontend.
+ * Único punto de acceso a datos del frontend.
  *
- * Regla de la arquitectura: ningun componente llama a `fetch` por su cuenta ni
- * lee archivos. Todo pasa por aqui.
+ * FUENTE DE VERDAD: `docs/harness/arquitectura-frontend-backend.md` (v1.2),
+ * secciones 4 a 6. Ningún componente llama a `fetch` por su cuenta ni lee
+ * archivos: todo pasa por aquí.
  *
- * Mientras el backend de Tom no este levantado, cada metodo cae en el
- * generador de muestra (`lib/fixtures`) y marca el origen como "fixture", que
- * la interfaz muestra de forma visible. Cuando el backend responde, el origen
- * pasa a "api" y no cambia nada mas en los componentes.
+ * La API es **diaria por defecto** (`date`, `from`/`to`); `period` solo aporta
+ * el contexto mensual. Mientras el backend no responda, cada método cae en el
+ * generador de muestra y marca el origen como "fixture", que la interfaz
+ * muestra de forma visible.
  */
 
 import type {
@@ -15,16 +16,20 @@ import type {
   DayPoint,
   EnvConditions,
   Hotspot,
+  Metadata,
+  MetricId,
   MonthCell,
   Sensor,
   SensorComparison,
   SusceptibilityAssessment,
+  TerritoryType,
 } from "./types";
-import { SENSOR_META } from "./types";
+import { ENV_METRICS, MIN_BASELINE_YEARS, SENSOR_META } from "./types";
 import {
   buildCalendar,
   buildDailySeries,
   buildEnvConditions,
+  buildMetadata,
   filterByArea,
   monthlyHotspots,
 } from "../lib/fixtures";
@@ -40,15 +45,29 @@ export class ApiError extends Error {
   }
 }
 
+/** La cancelación de una petición no es un error: se ignora (v1.2 §5, regla 2). */
+export function isAbort(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}
+
 export interface Envelope<T> {
   data: T;
   origin: DataOrigin;
 }
 
-async function getJson<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-  const qs = new URLSearchParams(params).toString();
+type Params = Record<string, string | undefined>;
+
+async function getJson<T>(path: string, params: Params = {}, signal?: AbortSignal): Promise<T> {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined) as [string, string][]
+  ).toString();
+
+  // Tiempo máximo propio, combinado con la cancelación que venga del llamador.
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const onAbort = () => ctrl.abort();
+  signal?.addEventListener("abort", onAbort);
+
   try {
     const res = await fetch(`${BASE}${path}${qs ? `?${qs}` : ""}`, { signal: ctrl.signal });
     if (!res.ok) {
@@ -58,30 +77,59 @@ async function getJson<T>(path: string, params: Record<string, string> = {}): Pr
     return (await res.json()) as T;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 
 /* -------------------------------------------------------------------------- */
-/* Estado de la conexion                                                       */
+/* Estado de la conexión                                                       */
 /* -------------------------------------------------------------------------- */
 
 export type BackendState = "checking" | "online" | "offline";
 
 let backendState: BackendState = "checking";
+let metadataCache: Metadata | null = null;
 
 export function getBackendState(): BackendState {
   return backendState;
 }
 
-/** Sondea `/health`. Se llama una vez al arrancar y luego cada pocos minutos. */
+/** Sondea `/health`. El contrato devuelve `{status, data_loaded}`. */
 export async function probeBackend(): Promise<BackendState> {
   try {
-    await getJson<{ status: string }>("/health");
-    backendState = "online";
+    const r = await getJson<{ status: string; data_loaded?: boolean }>("/health");
+    backendState = r.status === "ok" ? "online" : "offline";
   } catch {
     backendState = "offline";
   }
   return backendState;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Metadatos                                                                   */
+/* -------------------------------------------------------------------------- */
+
+export async function fetchMetadata(signal?: AbortSignal): Promise<Envelope<Metadata>> {
+  if (backendState === "online") {
+    try {
+      const m = await getJson<Metadata>("/metadata", {}, signal);
+      metadataCache = m;
+      return { data: m, origin: "api" };
+    } catch (e) {
+      if (isAbort(e)) throw e;
+      backendState = "offline";
+    }
+  }
+  const m = buildMetadata();
+  metadataCache = m;
+  return { data: m, origin: "fixture" };
+}
+
+/** Comprueba una fecha contra `available_date_ranges_by_sensor` (v1.2 §4.4). */
+export function isDateAvailable(date: string, sensor: Sensor, meta: Metadata | null): boolean {
+  const r = (meta ?? metadataCache)?.available_date_ranges_by_sensor?.[sensor];
+  if (!r) return false;
+  return date >= r.start && date <= r.end;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -90,86 +138,142 @@ export async function probeBackend(): Promise<BackendState> {
 
 export interface HotspotQuery {
   sensors: Sensor[];
-  year: number;
-  month: number;
+  /** Rango diario a pedir, ambos inclusive. */
+  from: string;
+  to: string;
   ring: LatLon[] | null;
-  /** Incluir las detecciones de baja confianza (clase 7). */
   includeLowConfidence: boolean;
 }
 
-export async function fetchHotspots(q: HotspotQuery): Promise<Envelope<Hotspot[]>> {
+export async function fetchHotspots(
+  q: HotspotQuery,
+  signal?: AbortSignal
+): Promise<Envelope<Hotspot[]>> {
   if (backendState === "online") {
     try {
       const all: Hotspot[] = [];
       for (const sensor of q.sensors) {
-        const r = await getJson<{ items: Hotspot[] }>("/hotspots", {
-          sensor,
-          period: `${q.year}-${String(q.month).padStart(2, "0")}`,
-        });
+        const r = await getJson<{ items: Hotspot[] }>(
+          "/hotspots",
+          { sensor, from: q.from, to: q.to },
+          signal
+        );
         all.push(...r.items);
       }
       const filtered = q.includeLowConfidence ? all : all.filter((h) => h.confidence !== "low");
       return { data: filterByArea(filtered, q.ring), origin: "api" };
-    } catch {
+    } catch (e) {
+      if (isAbort(e)) throw e;
       backendState = "offline";
     }
   }
 
   const all: Hotspot[] = [];
-  for (const sensor of q.sensors) {
-    all.push(...monthlyHotspots(sensor, q.year, q.month));
+  // El generador trabaja por mes: se recorren los meses que toca el rango.
+  for (const [y, m] of monthsBetween(q.from, q.to)) {
+    for (const sensor of q.sensors) all.push(...monthlyHotspots(sensor, y, m));
   }
-  const filtered = q.includeLowConfidence ? all : all.filter((h) => h.confidence !== "low");
+  const inRange = all.filter((h) => h.date >= q.from && h.date <= q.to);
+  const filtered = q.includeLowConfidence ? inRange : inRange.filter((h) => h.confidence !== "low");
   return { data: filterByArea(filtered, q.ring), origin: "fixture" };
 }
 
-export interface CalendarQuery {
-  sensor: Sensor;
-  ring: LatLon[] | null;
-}
-
-export async function fetchCalendar(q: CalendarQuery): Promise<Envelope<MonthCell[]>> {
+export async function fetchCalendar(
+  q: { sensor: Sensor; ring: LatLon[] | null },
+  signal?: AbortSignal
+): Promise<Envelope<MonthCell[]>> {
   if (backendState === "online") {
     try {
-      const r = await getJson<{ items: MonthCell[] }>("/calendar", { sensor: q.sensor });
+      const r = await getJson<{ items: MonthCell[] }>("/calendar", { sensor: q.sensor }, signal);
       return { data: r.items, origin: "api" };
-    } catch {
+    } catch (e) {
+      if (isAbort(e)) throw e;
       backendState = "offline";
     }
   }
   const areaKm2 = q.ring ? ringAreaKm2(q.ring) : 1_285_000;
-  // Peso local: un area sobre la Amazonia pesa mas que una sobre la costa.
   const localWeight = q.ring ? localActivityWeight(ringCentroid(q.ring)) : 1;
   return { data: buildCalendar(q.sensor, q.ring, areaKm2, localWeight), origin: "fixture" };
 }
 
-export function fetchDailySeries(
-  points: Hotspot[],
-  year: number,
-  month: number,
-  coverageHint: number
-): DayPoint[] {
-  return buildDailySeries(points, year, month, coverageHint);
+/**
+ * Serie diaria del rango pedido: actividad más contexto ambiental diario.
+ * Corresponde a `GET /territories/{type}/{id}/activity?from=&to=&sensor=`.
+ */
+export async function fetchActivity(
+  q: {
+    type: TerritoryType;
+    id: string;
+    from: string;
+    to: string;
+    sensor: Sensor;
+    /** Para la versión de muestra: focos ya filtrados por área. */
+    localHotspots: Hotspot[];
+    center: LatLon;
+    coverageHint: number;
+  },
+  signal?: AbortSignal
+): Promise<Envelope<DayPoint[]>> {
+  if (backendState === "online") {
+    try {
+      const r = await getJson<{ items: DayPoint[] }>(
+        `/territories/${q.type}/${encodeURIComponent(q.id)}/activity`,
+        { from: q.from, to: q.to, sensor: q.sensor },
+        signal
+      );
+      return { data: r.items, origin: "api" };
+    } catch (e) {
+      if (isAbort(e)) throw e;
+      backendState = "offline";
+    }
+  }
+  return {
+    data: buildDailySeries(q.localHotspots, q.from, q.to, q.center, q.coverageHint, q.sensor),
+    origin: "fixture",
+  };
 }
 
 export async function fetchEnvConditions(
   center: LatLon,
   year: number,
-  month: number
+  month: number,
+  signal?: AbortSignal
 ): Promise<Envelope<EnvConditions>> {
   if (backendState === "online") {
     try {
-      const r = await getJson<EnvConditions>("/environment", {
-        lat: String(center[0]),
-        lon: String(center[1]),
-        period: `${year}-${String(month).padStart(2, "0")}`,
-      });
+      const r = await getJson<EnvConditions>(
+        "/environment",
+        {
+          lat: String(center[0]),
+          lon: String(center[1]),
+          period: `${year}-${String(month).padStart(2, "0")}`,
+        },
+        signal
+      );
       return { data: r, origin: "api" };
-    } catch {
+    } catch (e) {
+      if (isAbort(e)) throw e;
       backendState = "offline";
     }
   }
   return { data: buildEnvConditions(center, year, month), origin: "fixture" };
+}
+
+/** URL de descarga del CSV diario del territorio (v1.2 §4.2). */
+export function exportCsvUrl(
+  type: TerritoryType,
+  id: string,
+  from: string,
+  to: string,
+  sensor: Sensor
+): string {
+  const qs = new URLSearchParams({ from, to, sensor });
+  return `${BASE}/territories/${type}/${encodeURIComponent(id)}/export.csv?${qs}`;
+}
+
+/** Indica si una métrica necesita `sensor` (las ambientales no). */
+export function metricNeedsSensor(metric: MetricId): boolean {
+  return !ENV_METRICS.includes(metric) && metric !== "conditions_classification";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -177,16 +281,17 @@ export async function fetchEnvConditions(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Comparacion multisensor.
+ * Comparación multisensor.
  *
- * ATENCION: en produccion esto lo precomputa Tom y llega por
- * `/sensor-comparison`. La version local existe solo para que la vista se
- * pueda construir y probar sin backend, y clasifica la senal de cada sensor
- * por separado antes de compararlas. Nunca suma conteos entre sensores.
+ * ATENCIÓN: en producción la precomputa Tom y llega por `/sensor-comparison`.
+ * Esta versión local existe solo para construir y probar la vista sin backend,
+ * y clasifica la señal de cada sensor por separado antes de compararlas. Nunca
+ * suma conteos entre sensores.
  */
 export function deriveComparison(
   perSensor: Partial<Record<Sensor, MonthCell | undefined>>,
-  periodId: string
+  periodId: string,
+  date?: string
 ): SensorComparison {
   const COVERAGE_MIN = 0.35;
   const ELEVATED_Z = 1.0;
@@ -207,7 +312,10 @@ export function deriveComparison(
       };
       continue;
     }
-    const comparable = cell.observation_coverage >= COVERAGE_MIN && cell.historical_anomaly !== null;
+    const comparable =
+      cell.observation_coverage >= COVERAGE_MIN &&
+      cell.historical_anomaly !== null &&
+      cell.baseline_years >= MIN_BASELINE_YEARS;
     let signal: "elevated" | "not_elevated" | "unknown" = "unknown";
     if (comparable) {
       usable++;
@@ -229,15 +337,15 @@ export function deriveComparison(
   if (usable === 0) {
     status = "insufficient";
     interpretation =
-      "Ninguna fuente alcanza la cobertura minima o la linea base necesaria para comparar.";
+      "Ninguna fuente alcanza la cobertura mínima o los 5 años de línea base necesarios para comparar.";
   } else if (usable === 1) {
     status = "single_sensor";
     interpretation =
-      "Solo una fuente es utilizable en este mes. No se puede evaluar concordancia entre sensores.";
+      "Solo una fuente es utilizable en este período. No se puede evaluar concordancia entre sensores.";
   } else if (elevated >= 2 && notElevated === 0) {
     status = "concordant_elevated";
     interpretation =
-      "Dos o mas sensores con cobertura suficiente senalan actividad por encima de su patron estacional.";
+      "Dos o más sensores con cobertura suficiente señalan actividad por encima de su patrón estacional.";
   } else if (notElevated >= 2 && elevated === 0) {
     status = "concordant_not_elevated";
     interpretation =
@@ -248,16 +356,16 @@ export function deriveComparison(
       "Los sensores no coinciden. Revisar cobertura, hora de sobrevuelo y diferencias instrumentales antes de interpretar.";
   }
 
-  return { period_id: periodId, status, sensors, interpretation };
+  return { date, period_id: periodId, status, sensors, interpretation };
 }
 
 /**
- * Arbol de decision de susceptibilidad contextual (seccion 7 del documento
- * tecnico v1.7).
+ * Árbol de decisión de susceptibilidad contextual (técnico v1.7, Etapa 7).
  *
- * ATENCION: igual que la comparacion, en produccion lo precomputa Tom y llega
- * por `/summary`. Esta copia local es solo para desarrollo, y mantiene los
- * mismos nodos, categorias y ruta de decision del contrato.
+ * ATENCIÓN: en producción lo precomputa Tom y llega por `/summary`. Esta copia
+ * local es solo para desarrollo, y mantiene los mismos nodos, categorías y ruta
+ * de decisión del contrato. El nodo N3a usa `t_amb_c` y
+ * `relative_humidity_2m_pct`, como fija la arquitectura v1.2 §2.1.
  */
 export function deriveSusceptibility(
   env: EnvConditions | null,
@@ -268,76 +376,110 @@ export function deriveSusceptibility(
   const modifiers: string[] = [];
   const missing: string[] = [];
 
-  if (!env) {
+  const need = (v: number | null | undefined) => v === null || v === undefined;
+
+  if (!env || need(env.vegetation_area_pct)) {
     return {
       classification: "not_evaluable",
       decision_path: ["N0:fail"],
       rules_triggered: [],
       modifiers: [],
       evidence: [],
-      missing_variables: ["cobertura vegetal", "sequedad", "meteorologia"],
+      missing_variables: ["vegetation_area_pct"],
     };
   }
 
-  // Umbrales: parametros del modulo analitico, no constantes universales.
-  const UMBRAL_VEG = 35; // % de cobertura potencialmente combustible
-  const UMBRAL_PEND = 12; // grados de pendiente media
-  const P25_PRECIP = 60; // mm acumulados en 30 dias
-  const P25_SOIL = 0.22; // fraccion volumetrica
-  const P75_WIND = 4.5; // m/s
-  const P75_TEMP = 26; // °C
-  const P25_RH = 45; // %
+  // Compuerta de calidad N0: cobertura vegetal + un indicador de sequedad + uno meteorológico.
+  const hasDryness = !need(env.precip_30d_mm) || !need(env.soil_moisture_surface);
+  const hasWeather = !need(env.wind_speed_10m_ms) || !need(env.t_amb_c);
+  if (!hasDryness) missing.push("precip_30d_mm", "soil_moisture_surface");
+  if (!hasWeather) missing.push("wind_speed_10m_ms", "t_amb_c");
+
+  // Umbrales: parámetros del módulo analítico, no constantes universales.
+  const UMBRAL_VEG = 35;
+  const UMBRAL_PEND = 12;
+  const P25_PRECIP = 60;
+  const P25_SOIL = 0.22;
+  const P75_WIND = 4.5;
+  const P75_TEMP = 26;
+  const P25_RH = 45;
 
   const evidence: SusceptibilityAssessment["evidence"] = [
     {
       variable: "vegetation_area_pct",
       value: env.vegetation_area_pct,
       unit: "%",
-      rule_status: env.vegetation_area_pct >= UMBRAL_VEG ? "sobre_umbral" : "bajo_umbral",
+      rule_status: (env.vegetation_area_pct ?? 0) >= UMBRAL_VEG ? "sobre_umbral" : "bajo_umbral",
       source_product: "MAPBIOMAS_PERU_C4",
     },
     {
       variable: "precip_30d_mm",
       value: env.precip_30d_mm,
       unit: "mm",
-      rule_status: env.precip_30d_mm < P25_PRECIP ? "bajo_p25_estacional" : "normal",
+      rule_status: (env.precip_30d_mm ?? Infinity) < P25_PRECIP ? "bajo_p25_estacional" : "normal",
       source_product: "ERA5_LAND_HOURLY",
     },
     {
       variable: "soil_moisture_surface",
       value: env.soil_moisture_surface,
       unit: "m3/m3",
-      rule_status: env.soil_moisture_surface < P25_SOIL ? "bajo_p25_estacional" : "normal",
+      rule_status:
+        (env.soil_moisture_surface ?? Infinity) < P25_SOIL ? "bajo_p25_estacional" : "normal",
       source_product: "ERA5_LAND_HOURLY",
     },
     {
       variable: "wind_speed_10m_ms",
       value: env.wind_speed_10m_ms,
       unit: "m/s",
-      rule_status: env.wind_speed_10m_ms > P75_WIND ? "sobre_p75_estacional" : "normal",
+      rule_status: (env.wind_speed_10m_ms ?? 0) > P75_WIND ? "sobre_p75_estacional" : "normal",
+      source_product: "ERA5_LAND_HOURLY",
+    },
+    {
+      variable: "t_amb_c",
+      value: env.t_amb_c,
+      unit: "°C",
+      rule_status: (env.t_amb_c ?? 0) > P75_TEMP ? "sobre_p75_estacional" : "normal",
       source_product: "ERA5_LAND_HOURLY",
     },
     {
       variable: "relative_humidity_2m_pct",
       value: env.relative_humidity_2m_pct,
       unit: "%",
-      rule_status: env.relative_humidity_2m_pct < P25_RH ? "bajo_p25_estacional" : "normal",
-      source_product: "ERA5_LAND_HOURLY",
+      rule_status:
+        (env.relative_humidity_2m_pct ?? 100) < P25_RH ? "bajo_p25_estacional" : "normal",
+      source_product: "ERA5_LAND_HOURLY (Magnus-Tetens)",
+    },
+    {
+      variable: "t_suelo_c",
+      value: env.t_suelo_c,
+      unit: "°C",
+      rule_status: env.t_suelo_c === null ? "no_estimable_por_nubes" : "informativo",
+      source_product: "MOD11A1 / MYD11A1 / VNP21A1D",
     },
     {
       variable: "slope_mean_deg",
       value: env.slope_mean_deg,
       unit: "grados",
-      rule_status: env.slope_mean_deg >= UMBRAL_PEND ? "pendiente_elevada" : "normal",
-      source_product: "SRTM",
+      rule_status: (env.slope_mean_deg ?? 0) >= UMBRAL_PEND ? "pendiente_elevada" : "normal",
+      source_product: env.dem_source ?? "SRTM",
     },
   ];
 
-  // N0 — compuerta de calidad
+  if (!hasDryness || !hasWeather) {
+    return {
+      classification: "partial",
+      decision_path: ["N0:fail"],
+      rules_triggered: [],
+      modifiers: [],
+      evidence,
+      missing_variables: missing,
+    };
+  }
+
   path.push("N0:pass");
 
-  // N1 — vegetacion combustible
-  if (env.vegetation_area_pct < UMBRAL_VEG) {
+  // N1 — vegetación combustible
+  if ((env.vegetation_area_pct ?? 0) < UMBRAL_VEG) {
     path.push("N1:no");
     return {
       classification: "low",
@@ -351,15 +493,18 @@ export function deriveSusceptibility(
   path.push("N1:yes");
   rules.push("vegetation_present");
 
-  // N2 — sequedad
-  const dry = env.precip_30d_mm < P25_PRECIP || env.soil_moisture_surface < P25_SOIL;
-  const windy = env.wind_speed_10m_ms > P75_WIND;
-  const hotDry = env.temperature_2m_c > P75_TEMP && env.relative_humidity_2m_pct < P25_RH;
-  const steep = env.slope_mean_deg >= UMBRAL_PEND;
+  const dry =
+    (env.precip_30d_mm ?? Infinity) < P25_PRECIP ||
+    (env.soil_moisture_surface ?? Infinity) < P25_SOIL;
+  const windy = (env.wind_speed_10m_ms ?? 0) > P75_WIND;
+  const hotDry =
+    (env.t_amb_c ?? 0) > P75_TEMP && (env.relative_humidity_2m_pct ?? 100) < P25_RH;
+  const steep = (env.slope_mean_deg ?? 0) >= UMBRAL_PEND;
 
   if (steep) modifiers.push("steep_slope_share_high");
   if (thermalElevated) modifiers.push("thermal_history_elevated");
-  if (env.water_area_pct >= 5) modifiers.push("water_share_high");
+  if ((env.water_area_pct ?? 0) >= 5) modifiers.push("water_share_high");
+  if (env.t_suelo_c !== null && (env.t_suelo_c ?? 0) > 35) modifiers.push("lst_high");
 
   let classification: SusceptibilityAssessment["classification"];
   if (dry) {
@@ -396,7 +541,42 @@ export function deriveSusceptibility(
   };
 }
 
-/** Peso de actividad segun la ubicacion. Solo para el juego de muestra. */
+/* -------------------------------------------------------------------------- */
+/* Utilidades de fecha                                                         */
+/* -------------------------------------------------------------------------- */
+
+/** Pares [año, mes] que toca el rango, ambos inclusive. */
+export function monthsBetween(from: string, to: string): [number, number][] {
+  const out: [number, number][] = [];
+  let y = Number(from.slice(0, 4));
+  let m = Number(from.slice(5, 7));
+  const yEnd = Number(to.slice(0, 4));
+  const mEnd = Number(to.slice(5, 7));
+  while (y < yEnd || (y === yEnd && m <= mEnd)) {
+    out.push([y, m]);
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return out;
+}
+
+export const pad2 = (n: number) => String(n).padStart(2, "0");
+
+export function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+export function monthRange(year: number, month: number): { from: string; to: string } {
+  return {
+    from: `${year}-${pad2(month)}-01`,
+    to: `${year}-${pad2(month)}-${pad2(daysInMonth(year, month))}`,
+  };
+}
+
+/** Peso de actividad según la ubicación. Solo para el juego de muestra. */
 function localActivityWeight(center: LatLon): number {
   const [lat, lon] = center;
   const amazon = lon > -77.5 && lat > -13.5 && lat < -3;

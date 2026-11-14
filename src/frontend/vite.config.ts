@@ -20,14 +20,5 @@ export default defineConfig({
   build: {
     outDir: "dist",
     chunkSizeWarningLimit: 1200,
-    rollupOptions: {
-      // Nombres estables: cada build sobrescribe los mismos archivos en vez de
-      // dejar copias con hash acumuladas en la carpeta.
-      output: {
-        entryFileNames: "assets/app.js",
-        chunkFileNames: "assets/[name].js",
-        assetFileNames: "assets/app.[ext]",
-      },
-    },
   },
 });

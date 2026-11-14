@@ -47,7 +47,7 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
     "Liberation Mono", monospace;
 
-  --h-header: 56px;
+  --h-header: 72px;
   --h-statusbar: 26px;
 }
 
@@ -96,43 +96,235 @@ body {
 /* Layout ----------------------------------------------------------------- */
 .app {
   display: grid;
-  grid-template-rows: var(--h-header) 1fr var(--h-statusbar);
   height: 100%;
 }
+/* La portada se desplaza dentro de su propio contenedor y la cabecera flota
+   sobre ella. La herramienta reparte la ventana en filas fijas. */
+.app--inicio {
+  grid-template-rows: 1fr;
+}
+.app--mapa {
+  grid-template-rows: var(--h-header) 1fr var(--h-statusbar);
+}
 
-.app__body {
+.tool {
   display: grid;
-  grid-template-columns: 300px 1fr 360px;
+  /* barra | cajón | mapa | cajón | barra. Con los cajones cerrados su columna
+     vale cero y el mapa se queda con todo el ancho: ese es el estado normal. */
+  grid-template-columns: 52px 0 1fr 0 52px;
   min-height: 0;
   border-top: 1px solid var(--line);
+  transition: grid-template-columns 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tool[data-left="open"] {
+  grid-template-columns: 52px 302px 1fr 0 52px;
+}
+.tool[data-right="open"] {
+  grid-template-columns: 52px 0 1fr 302px 52px;
+}
+.tool[data-left="open"][data-right="open"] {
+  grid-template-columns: 52px 302px 1fr 302px 52px;
 }
 
-@media (max-width: 1280px) {
-  .app__body {
-    grid-template-columns: 260px 1fr 310px;
+@media (max-width: 1100px) {
+  .tool[data-left="open"],
+  .tool[data-right="open"],
+  .tool[data-left="open"][data-right="open"] {
+    grid-template-columns: 52px 272px 1fr 0 52px;
+  }
+  .tool[data-right="open"] {
+    grid-template-columns: 52px 0 1fr 272px 52px;
   }
 }
 
-@media (max-width: 1000px) {
-  .app__body {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 420px auto;
-    overflow-y: auto;
-  }
-}
+/* --- Barra de iconos ------------------------------------------------------ */
 
-.rail {
-  position: relative;
-  z-index: 20;
+.dockbar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 0;
   background: var(--surface-0);
-  overflow-y: auto;
-  min-height: 0;
+  overflow: visible;
+  z-index: 25;
 }
-.rail--left {
+.dockbar--left {
   border-right: 1px solid var(--line);
 }
-.rail--right {
+.dockbar--right {
   border-left: 1px solid var(--line);
+}
+
+.dockbar__btn {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-faint);
+  cursor: pointer;
+  transition: color 0.14s, background 0.14s, border-color 0.14s;
+}
+.dockbar__btn:hover {
+  color: var(--fg);
+  background: var(--surface-2);
+}
+.dockbar__btn[aria-pressed="true"] {
+  color: #000;
+  background: var(--acid);
+  border-color: var(--acid);
+}
+.dockbar__btn:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 2px;
+}
+
+.dockbar__badge {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  font-size: 8px;
+  line-height: 1;
+  padding: 1.5px 3px;
+  background: var(--surface-3);
+  color: var(--fg-dim);
+  border: 1px solid var(--line-strong);
+}
+.dockbar__btn[aria-pressed="true"] .dockbar__badge {
+  background: #000;
+  color: var(--acid);
+  border-color: #000;
+}
+
+/* Etiqueta emergente al pasar el ratón */
+.dockbar__tip {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: #0d0d0d;
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  padding: 5px 9px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s;
+  z-index: 50;
+}
+.dockbar--left .dockbar__tip {
+  left: calc(100% + 9px);
+}
+.dockbar--right .dockbar__tip {
+  right: calc(100% + 9px);
+}
+.dockbar__btn:hover .dockbar__tip {
+  opacity: 1;
+}
+
+/* --- Cajón ---------------------------------------------------------------- */
+
+.dock {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface-0);
+  z-index: 24;
+}
+.dock--left {
+  border-right: 1px solid var(--line);
+}
+.dock--right {
+  border-left: 1px solid var(--line);
+}
+.tool[data-left="closed"] .dock--left,
+.tool[data-right="closed"] .dock--right {
+  border: 0;
+}
+
+.drawer {
+  width: 301px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+@media (max-width: 1100px) {
+  .drawer {
+    width: 271px;
+  }
+}
+
+.drawer__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 14px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.drawer__title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer__note {
+  margin-left: auto;
+  font-size: 9.5px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.drawer__close {
+  background: none;
+  border: 0;
+  color: var(--fg-faint);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  margin-left: 4px;
+}
+.drawer__close:hover {
+  color: var(--ember);
+}
+.drawer__close:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 2px;
+}
+
+.drawer__body {
+  padding: 15px 14px 20px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+/* En pantallas estrechas los cajones pasan a ocupar casi todo el ancho y el
+   mapa conserva una altura mínima utilizable. */
+@media (max-width: 760px) {
+  .tool {
+    grid-template-columns: 46px 0 1fr 0 46px;
+  }
+  .tool[data-left="open"] {
+    grid-template-columns: 46px 1fr 0 0 46px;
+  }
+  .tool[data-right="open"] {
+    grid-template-columns: 46px 0 0 1fr 46px;
+  }
+  .drawer {
+    width: 100%;
+  }
 }
 
 /* Header ----------------------------------------------------------------- */
@@ -141,40 +333,89 @@ body {
   z-index: 30;
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 0 16px;
+  gap: 26px;
+  min-height: var(--h-header);
+  padding: 0 22px;
   background: var(--surface-0);
 }
 
-.hdr__mark {
+/* Sobre la portada la cabecera flota: se le da aire arriba y a los lados para
+   que no quede pegada al borde de la ventana. */
+.hdr--over {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 60;
+  min-height: 0;
+  padding: 26px 44px 20px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.92) 30%, rgba(0, 0, 0, 0));
+  border-bottom: 0;
+}
+@media (max-width: 760px) {
+  .hdr--over {
+    padding: 16px 20px 14px;
+  }
+}
+
+/* --- Marca ---------------------------------------------------------------- */
+
+.brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  text-decoration: none;
+  gap: 13px;
+  background: none;
+  border: 0;
+  padding: 6px 10px 6px 0;
+  margin: 0;
+  cursor: pointer;
   color: inherit;
+  font-family: inherit;
+  text-align: left;
 }
-
-.hdr__glyph {
-  width: 28px;
-  height: 28px;
+.brand:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 3px;
+}
+.brand .logo {
   flex: none;
+  display: block;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.brand:hover .logo {
+  transform: rotate(-8deg) scale(1.06);
 }
 
-.hdr__name {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 19px;
-  letter-spacing: -0.02em;
+.brand__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   line-height: 1;
 }
-
-.hdr__tag {
-  font-size: 9.5px;
+.brand__name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.025em;
+  transition: color 0.14s;
+}
+.brand:hover .brand__name {
+  color: var(--acid);
+}
+.brand__tag {
+  font-size: 8.5px;
   letter-spacing: 0.22em;
   color: var(--fg-faint);
   text-transform: uppercase;
-  line-height: 1;
-  margin-top: 3px;
+}
+
+.hdr__sep {
+  width: 1px;
+  height: 22px;
+  background: var(--line-strong);
+}
+.tab--sub[aria-selected="true"] {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--acid);
 }
 
 .hdr__nav {
@@ -253,15 +494,58 @@ body {
 }
 
 .panel__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--line);
+  margin: 0;
   position: sticky;
   top: 0;
   z-index: 2;
+  font-weight: 400;
+}
+
+.panel__btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+.panel__btn:hover {
+  background: var(--surface-2);
+}
+.panel__btn:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: -2px;
+}
+.panel__btn--static {
+  cursor: default;
+}
+
+/* Galón: apunta abajo cuando el panel está abierto. */
+.panel__chev {
+  margin-left: 4px;
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-right: 1.4px solid var(--fg-faint);
+  border-bottom: 1.4px solid var(--fg-faint);
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform 0.16s ease;
+}
+.panel[data-open="false"] .panel__chev {
+  transform: rotate(-45deg) translate(-1px, -1px);
+}
+.panel[data-open="false"] .panel__btn {
+  border-bottom-color: transparent;
+}
+.panel__btn:hover .panel__chev {
+  border-color: var(--acid);
 }
 
 .panel__idx {
@@ -272,6 +556,9 @@ body {
 
 .panel__title {
   font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--fg);
@@ -281,6 +568,7 @@ body {
 
 .panel__note {
   margin-left: auto;
+  flex: none;
   font-size: 9.5px;
   color: var(--fg-faint);
   letter-spacing: 0.06em;
@@ -532,6 +820,12 @@ input[type="range"]:focus-visible {
   font-size: 9.5px !important;
   border-radius: 0 !important;
 }
+/* Tema oscuro a partir de teselas claras: invertir y desaturar.
+   Evita depender de un proveedor que pida clave de API. */
+.tilePane--dark {
+  filter: invert(1) hue-rotate(180deg) saturate(0.32) brightness(0.74) contrast(1.06);
+}
+
 .map--drawing {
   cursor: crosshair;
 }
@@ -552,6 +846,10 @@ input[type="range"]:focus-visible {
 .ov--tl {
   top: 12px;
   left: 56px;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .ov--tr {
   top: 12px;
@@ -581,6 +879,8 @@ input[type="range"]:focus-visible {
   color: #000;
   font-weight: 700;
 }
+
+
 
 .hud {
   background: rgba(7, 7, 7, 0.93);
@@ -856,6 +1156,11 @@ input[type="range"]:focus-visible {
 .status__spacer {
   flex: 1;
 }
+@media (max-width: 1100px) {
+  .status__src {
+    display: none;
+  }
+}
 .status__prompt {
   color: var(--term);
 }
@@ -933,6 +1238,32 @@ input[type="range"]:focus-visible {
   background: var(--surface-0);
   max-height: 46vh;
   overflow-y: auto;
+}
+
+.calstrip .panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+}
+.calstrip .panel__title {
+  white-space: nowrap;
+}
+
+.calstrip__hide {
+  background: none;
+  border: 0;
+  color: var(--fg-faint);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  margin-left: 10px;
+}
+.calstrip__hide:hover {
+  color: var(--ember);
 }
 
 .calstrip__body {

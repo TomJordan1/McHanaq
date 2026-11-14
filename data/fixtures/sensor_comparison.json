@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "data_origin": "fixture",
+  "items": [
+    {
+      "period_id": "2026-09",
+      "territory_type": "province",
+      "territory_id": "1501",
+      "status": "discordant",
+      "sensors": {
+        "MODIS_TERRA": {
+          "available": true,
+          "activity_rate": 0.001403,
+          "historical_anomaly": 1.4,
+          "observation_coverage": 0.7721,
+          "signal_status": "not_elevated"
+        },
+        "MODIS_AQUA": {
+          "available": true,
+          "activity_rate": 0.000792,
+          "historical_anomaly": 0.2,
+          "observation_coverage": 0.7368,
+          "signal_status": "not_elevated"
+        },
+        "VIIRS_SNPP": {
+          "available": true,
+          "activity_rate": 0.00055,
+          "historical_anomaly": 2.1,
+          "observation_coverage": 0.7076,
+          "signal_status": "elevated"
+        }
+      },
+      "interpretation": "[FIXTURE] Los sensores no muestran una señal estacional concordante; revisar cobertura, sobrevuelo y diferencias instrumentales.",
+      "method_version": "fixture-0.1.0"
+    },
+    {
+      "period_id": "2026-09",
+      "territory_type": "hydro_unit",
+      "territory_id": "FX13755",
+      "status": "single_sensor",
+      "sensors": {
+        "MODIS_TERRA": {
+          "available": true,
+          "activity_rate": 0.000837,
+          "historical_anomaly": null,
+          "observation_coverage": 0.7469,
+          "signal_status": null
+        },
+        "MODIS_AQUA": {
+          "available": false,
+          "activity_rate": null,
+          "historical_anomaly": null,
+          "observation_coverage": 0.0,
+          "signal_status": null
+        },
+        "VIIRS_SNPP": {
+          "available": true,
+          "activity_rate": 0.00019,
+          "historical_anomaly": 0.6,
+          "observation_coverage": 0.7266,
+          "signal_status": "not_elevated"
+        }
+      },
+      "interpretation": "[FIXTURE] Solo un sensor tiene cobertura y línea base suficientes; no es posible contrastar señales.",
+      "method_version": "fixture-0.1.0"
+    }
+  ]
+}

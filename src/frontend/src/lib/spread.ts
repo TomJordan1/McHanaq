@@ -1,6 +1,16 @@
 /**
- * Simulacion exploratoria de recorrido de fuego
- * ============================================
+ * FASE 2 (OPCIONAL) — Proyeccion visual de propagacion
+ * ===================================================
+ *
+ * Corresponde a la seccion 12 de `docs/harness/arquitectura-frontend-backend.md`
+ * (v1.2): esta desacoplada de la Fase 1 y no toca ninguno de sus endpoints.
+ * Reutiliza las variables diarias ya preparadas en Fase 1 (`wind_dir_deg`,
+ * `wind_speed_10m_ms`, `elevation_m`, cobertura, `t_amb_c`) para estimar hacia
+ * donde podria extenderse un fuego desde un foco de partida.
+ *
+ * Cuando el backend publique `/spread-forecast` o `/spread-simulate`, esta
+ * implementacion local se sustituye por la respuesta del servidor sin cambiar
+ * la interfaz.
  *
  * QUE ES. Un modelo de tiempo de llegada sobre una grilla. Desde un punto de
  * ignicion hipotetico propaga un frente usando la forma eliptica clasica de
@@ -26,6 +36,15 @@
  */
 
 import { PERU_BOUNDS, pointInRing, ringBounds, type LatLon } from "./geo";
+import { ISOCHRONE_STEPS_H } from "../api/types";
+import { inferno } from "./palette";
+
+/** Identificador del modelo, segun `model_metadata.model_name` del contrato. */
+export const SPREAD_MODEL_NAME = "heuristic_wind_slope_spread_v1";
+
+/** Aviso que debe acompaniar siempre al resultado (arquitectura v1.2 §12.2). */
+export const SPREAD_DISCLAIMER =
+  "Proyeccion exploratoria basada en viento diario, DEM y cobertura; no sustituye modelos fisicos operativos en tiempo real.";
 
 export interface SpreadInputs {
   /** Vertices del area de interes, en [lat, lon]. */
@@ -380,8 +399,10 @@ export function simulateSpread(input: SpreadInputs): SpreadResult {
       : null;
 
   const cellHa = (cellSizeM * cellSizeM) / 10_000;
-  const bandHours = [1, 3, 6, 12, 24, 48].filter((h) => h <= horizonHours);
+  // Pasos de isocrona del contrato (+6 h, +12 h, +24 h), recortados al horizonte.
+  const bandHours = ISOCHRONE_STEPS_H.filter((h) => h <= horizonHours);
   if (!bandHours.includes(horizonHours)) bandHours.push(horizonHours);
+  bandHours.sort((a, b) => a - b);
   const bands = bandHours.map((h) => {
     let count = 0;
     for (let i = 0; i < n; i++) if (arrival[i] <= h) count++;
@@ -421,31 +442,9 @@ export function simulateSpread(input: SpreadInputs): SpreadResult {
 /* Render a canvas                                                             */
 /* -------------------------------------------------------------------------- */
 
-/** Rampa inferno, 10 pasos. Perceptualmente uniforme y segura para daltonismo. */
-export const RAMP: [number, number, number][] = [
-  [11, 7, 24],
-  [34, 9, 63],
-  [72, 15, 98],
-  [113, 31, 109],
-  [155, 47, 102],
-  [197, 63, 81],
-  [230, 92, 47],
-  [248, 133, 12],
-  [252, 180, 22],
-  [243, 229, 92],
-];
-
+/** El frente usa la rampa calida: el color codifica tiempo, no magnitud. */
 export function rampColor(t: number): [number, number, number] {
-  const x = Math.max(0, Math.min(1, t)) * (RAMP.length - 1);
-  const i = Math.floor(x);
-  const f = x - i;
-  const a = RAMP[i];
-  const b = RAMP[Math.min(RAMP.length - 1, i + 1)];
-  return [
-    Math.round(a[0] + (b[0] - a[0]) * f),
-    Math.round(a[1] + (b[1] - a[1]) * f),
-    Math.round(a[2] + (b[2] - a[2]) * f),
-  ];
+  return inferno(t);
 }
 
 export function rampCss(t: number): string {

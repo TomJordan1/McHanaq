@@ -1,19 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Frontend
 node_modules/
 dist/
+src/frontend/dist/
 .vite/
 *.local
+
+# Environment & secrets
 .env
 .env.*
 !.env.example
-.DS_Store
-Thumbs.db
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-data/intermediate/
+
+# Heavy intermediate GEE exports & raw local satellite folders
+data/intermediate/*
+!data/intermediate/.gitkeep
+MODIS/
+VIRS/
 *.tif
 *.tiff
 *.zip
+
+# OS / Editors
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/

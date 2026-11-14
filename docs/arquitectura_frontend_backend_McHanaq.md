@@ -45,15 +45,18 @@ Mientras el backend lo vean Tom y Angelo, la regla es **minimizar superficie de 
 ### 2.1. Proyecto longitudinal de procesamiento (2000–presente)
 
 1. **Capa diaria en GEE (Angelo → `data/intermediate/`):**
-   * **`daily_activity.csv`:** conteos diarios por territorio y sensor (`MODIS_TERRA` desde feb-2000, `MODIS_AQUA` desde jul-2002, `VIIRS_SNPP` desde ene-2012) con clases `FireMask` 7 y 8–9, `valid_land_pixels`, `expected_land_pixels_per_day` y `observation_coverage` (sección 8.4 de v1.7).
-   * **`environmental_daily.csv`:** serie longitudinal **diaria** por `(date, territory_type, territory_id)` con las 4 variables extras (sección 2.2).
-   * **`environmental_context.csv`:** tabla mensual por `(period_id, territory_type, territory_id)` alineada con v1.7 (MapBiomas anual, NDVI `MOD13A3`, `precip_30d_mm`, `soil_moisture_surface`, pendiente SRTM, más los agregados mensuales de las variables diarias).
-   * **`gee_manifest.json`:** registra colecciones exactas, fechas reales disponibles en GEE, modelo DEM aplicado por época y fuente de `t_amb_c`.
-   * **Regla operativa GEE:** exportar `daily_activity.csv` y `environmental_daily.csv` por bloques de 1–2 años sobre el área piloto (`Export.table.toDrive`) para evitar timeouts o límites de cuota EECU en la serie 2000–presente.
+   * **Cobertura nacional (todo el Perú):** Todas las colecciones elegidas (`MOD14A1`, `MYD14A1`, `VNP14A1`, `MOD11A1`/`MYD11A1`, `VNP21A1D/N`, `ERA5-Land`, `NASADEM`/`SRTM`, `Copernicus GLO-30` y `MapBiomas Perú Col. 4`) cubren el 100 % del territorio peruano (`ee.Filter.bounds(territories)`).
+   * **`daily_activity.csv`:** conteos diarios por territorio y sensor (`MODIS_TERRA` 2000–2025, `MODIS_AQUA` 2002–2025, `VIIRS_SNPP` 2012/2018–2025) con clases `FireMask` 7 y 8–9, `valid_land_pixels`, `expected_land_pixels_per_day` y `observation_coverage` (sección 8.4 de v1.7).
+   * **Control de nubes y cobertura (`< 30%` de nubes):** se exige **`observation_coverage >= 0.70`** (y `lst_valid_pixel_pct >= 70%` para LST). Si un día supera el 30 % de nubes/huecos en el polígono, se conserva el registro con su cobertura real pero el valor térmico (`t_suelo_c`) se marca como `null` para no sesgar la serie.
+   * **`environmental_daily.csv`:** serie longitudinal **diaria** por `(date, territory_type, territory_id)` con `t_amb_c`, `relative_humidity_2m_pct`, `t_suelo_c`, `lst_valid_pixel_pct`, `wind_dir_deg`, `wind_speed_10m_ms`, `elevation_m` y `dem_source` (sección 2.2).
+   * **`environmental_context.csv`:** tabla mensual por `(period_id, territory_type, territory_id)` generada por Tom (en `analytics/`) agregando `environmental_daily.csv` junto con MapBiomas anual, `MOD13A3` NDVI, `precip_30d_mm`, `soil_moisture_surface` (`volumetric_soil_water_layer_1`, `m³/m³`) y pendiente SRTM.
+   * **`gee_manifest.json`:** registra colecciones exactas, fechas reales disponibles en GEE, `min_baseline_years: 5`, modelo DEM aplicado por época y fuente de `t_amb_c`.
+   * **Regla operativa GEE:** exportar `daily_activity.csv` y `environmental_daily.csv` por bloques de 1–2 años sobre el área piloto (`Export.table.toDrive`) para evitar timeouts o límites de cuota EECU en la serie 2000–2025.
 2. **Capa analítica longitudinal en Python (Tom → `analytics/` → `data/processed/`):**
-   * Calcula `activity_rate`, `observation_coverage`, `active_days`, `max_consecutive_active_days` y la anomalía histórica robusta (`robust_z` con mediana y MAD por mes calendario) en `activity_summary.json`.
-   * Conserva el detalle diario (actividad + `t_amb_c`, `t_suelo_c`, `wind_dir_deg`, `wind_speed_10m_ms`, `elevation_m`) en `activity_daily.json`.
-   * Evalúa el árbol de susceptibilidad contextual (Etapa 7 de v1.7) en `conditions_assessment.json` y la concordancia multisensor (`concordant_elevated`, `concordant_not_elevated`, `discordant`, `single_sensor`, `insufficient`) en `sensor_comparison.json`.
+   * **Agregación diario → mensual (media aritmética y ponderada):** para los reportes mensuales de `t_amb_c`, `t_suelo_c`, `relative_humidity_2m_pct` y `wind_speed_10m_ms`, se calcula tanto la **media aritmética** como la **media ponderada por cobertura válida diaria** ($\bar{X}_{\text{pond}} = \sum w_d X_d / \sum w_d$, donde $w_d$ es la fracción de píxeles válidos del día $d$). Para `wind_dir_deg` mensual se aplica promedio vectorial ponderado de $(\bar{u}, \bar{v})$.
+   * Calcula `activity_rate`, `observation_coverage`, `active_days`, `max_consecutive_active_days` y la anomalía histórica robusta (`robust_z` con mediana y MAD por mes calendario, exigiendo `min_baseline_years: 5`, cubierto tanto por MODIS 2000–2025 como por VIIRS 2018–2025) en `activity_summary.json`.
+   * Conserva el detalle diario (actividad + `t_amb_c`, `relative_humidity_2m_pct`, `t_suelo_c`, `lst_valid_pixel_pct`, `wind_dir_deg`, `wind_speed_10m_ms`, `elevation_m`, `dem_source`) en `activity_daily.json`.
+   * Evalúa el árbol de susceptibilidad contextual (Etapa 7 de v1.7, incluido el nodo N3a con `t_amb_c` y `relative_humidity_2m_pct`) en `conditions_assessment.json` y la concordancia multisensor en `sensor_comparison.json`.
 
 ### 2.2. Variables extras ambientales y topográficas (proceso diario)
 
@@ -61,10 +64,11 @@ Se exportan en `data/intermediate/environmental_daily.csv` con clave `(date, ter
 
 | Variable | Campo en CSV/JSON | Unidad | Fuente GEE y regla de procesamiento diario |
 |---|---|---|---|
-| **Temperatura ambiente (`T_amb`)** | `t_amb_c` *(equiv. `temperature_2m_c` en v1.7)* | `°C` | Temperatura del aire a 2 m diaria desde `ECMWF/ERA5_LAND/HOURLY` (agregado diario en GEE). Si en algún tramo se extrae perfil atmosférico de MODIS/VIIRS (`MOD07_L2` / `MYD07_L2`), documentarlo en `gee_manifest.json` (MODIS/VIIRS miden LST superficial de forma nativa, no aire a 2 m). |
-| **Temperatura del suelo (`T_suelo` / LST)** | `t_suelo_c` *(opcionalmente `t_suelo_day_c`, `t_suelo_night_c`)* | `°C` | Land Surface Temperature diaria extraída directamente de **MODIS** (`MODIS/061/MOD11A1` Terra / `MYD11A1` Aqua, 1 km) y **VIIRS** (`NASA/VIIRS/002/VNP21A1D` / `VNP21A1N`, 1 km), aplicando factor de escala y conversión de Kelvin a `°C` (`K - 273.15`), filtrando por banda `QC`. |
-| **Dirección del viento (diaria)** | `wind_dir_deg` + `wind_speed_10m_ms` | `grados` (0–360) y `m/s` | Procesada **por día** desde `u_component_of_wind_10m` y `v_component_of_wind_10m` de `ECMWF/ERA5_LAND/HOURLY` (~11.1 km, continuo 2000–presente). **Regla vectorial:** nunca promediar ángulos directamente; promediar `u` y `v` en el día/territorio y luego calcular `wind_dir_deg = (atan2(-u, -v) * 180 / π + 360) % 360` (convención meteorológica: *desde dónde* sopla, 0° = N, 90° = E, 180° = S, 270° = O) y `sqrt(u² + v²)`. *(Opcional: **NOAA ARL READY / `READYamet.php`** puede usarse como contraste puntual en la demo, pero no reemplaza a ERA5-Land en la serie longitudinal por menor resolución ~55–111 km y cobertura GDAS desde dic-2004).* |
-| **Altura / Elevación (DEM por época)** | `elevation_m` + `dem_source` | `m s.n.m.` | Extraída del modelo DEM correspondiente a la época del sensor/fecha: **SRTM / NASADEM 30 m** (`USGS/SRTMGL1_003` o `NASA/NASADEM_HGT/001`, época 2000) para el tramo histórico **MODIS (2000–2011)**, y **Copernicus DEM GLO-30** (`COPERNICUS/DEM/GLO30`, época 2011–2015) para el tramo **VIIRS (2012–presente)**, registrando la elevación media/mediana del territorio en `environmental_daily.csv` y `gee_manifest.json`. |
+| **Temperatura ambiente (`T_amb`)** | `t_amb_c` | `°C` | Banda `temperature_2m` de `ECMWF/ERA5_LAND/HOURLY` convertida a Celsius (`temperature_2m - 273.15`), agregada por promedio diario sobre el territorio. |
+| **Humedad relativa (`HR`, para nodo N3a)** | `relative_humidity_2m_pct` | `%` (0–100) | Calculada por día desde `temperature_2m` ($T_C$) y `dewpoint_temperature_2m` ($T_{d,C}$) de `ERA5-Land` mediante la **ecuación de Magnus-Tetens**: $RH = 100 \times \exp(\frac{17.625\,T_{d,C}}{243.04 + T_{d,C}}) / \exp(\frac{17.625\,T_C}{243.04 + T_C})$, acotada a $[0, 100]$. |
+| **Temperatura del suelo (`T_suelo` / LST)** | `t_suelo_c` + `lst_valid_pixel_pct` | `°C` y `%` | Land Surface Temperature diaria de **MODIS** (`MODIS/061/MOD11A1` / `MYD11A1`, bandas `LST_Day_1km` / `LST_Night_1km` con **`QC_Day` / `QC_Night` bits 0–1 == 0**) y **VIIRS** (`NASA/VIIRS/002/VNP21A1D` / `VNP21A1N`, bandas `LST_1KM` / `QC`). Conversión exacta: **`valor * 0.02 - 273.15`**. Solo es válida si hay **`< 30%` de nubes (`lst_valid_pixel_pct >= 70%`)**. |
+| **Dirección del viento (diaria)** | `wind_dir_deg` + `wind_speed_10m_ms` | `grados` (0–360) y `m/s` | Procesada **por día** desde `u_component_of_wind_10m` y `v_component_of_wind_10m` de `ECMWF/ERA5_LAND/HOURLY` (~11.1 km, continuo 2000–2025). **Regla vectorial:** nunca promediar ángulos directamente; promediar `u` y `v` en el día/territorio y luego calcular `wind_dir_deg = (atan2(-u, -v) * 180 / π + 360) % 360` (convención meteorológica: *desde dónde* sopla, 0° = N, 90° = E, 180° = S, 270° = O) y `sqrt(u² + v²)`. *(Opcional: **NOAA ARL READY / `READYamet.php`** como contraste puntual en demo).* |
+| **Altura / Elevación (DEM por época)** | `elevation_m` + `dem_source` | `m s.n.m.` | **SRTM / NASADEM 30 m** (`USGS/SRTMGL1_003` o `NASA/NASADEM_HGT/001`, banda **`elevation`**) para el tramo **MODIS (2000–2011)**, y **Copernicus DEM GLO-30** (`COPERNICUS/DEM/GLO30`, banda **`DEM`**) para el tramo **VIIRS (2012–2025)**, registrando media/mediana del territorio. |
 
 En desarrollo local:
 
@@ -160,13 +164,14 @@ Un solo formato, sin trazas técnicas:
 
 ### 4.4. Validación de fechas y períodos
 
-El backend consulta `metadata.json`, no calcula nada:
+El backend consulta `metadata.json` (`available_date_ranges_by_sensor` con formato `{"MODIS_TERRA": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}}`, además de `available_periods_by_sensor`, `common_environmental_periods` y `common_analysis_periods`), sin calcular nada:
 
-- Ficha diaria (`/summary?date=YYYY-MM-DD`): `date` debe estar dentro de `available_date_ranges_by_sensor[sensor]` **y** `common_environmental_dates` (o su mes `YYYY-MM` en `available_periods_by_sensor[sensor]` y `common_environmental_periods`).
+- Si `date` tiene formato inválido (ej. `2026-02-30` o distinto a `YYYY-MM-DD`), se responde **`400 INVALID_PARAMETER`**.
+- Ficha diaria (`/summary?date=YYYY-MM-DD`): `date` debe caer dentro de `available_date_ranges_by_sensor[sensor]` **y** su mes `YYYY-MM` en `common_environmental_periods`.
 - Serie o métrica diaria (`/activity`, `/territory-metrics` con `sensor`): `date` (o el rango `from`–`to`) dentro de `available_date_ranges_by_sensor[sensor]`.
-- Métrica ambiental sin `sensor` (`/territory-metrics`): `date` dentro de `common_environmental_dates` (o `common_environmental_periods`).
-- Comparación multisensor (`/sensor-comparison`): `date` dentro de `common_analysis_dates` (o `common_analysis_periods`).
-- Si una fecha o período no está disponible, se responde `422`. Nunca se rellena con ceros.
+- Métrica ambiental sin `sensor` (`/territory-metrics`): el mes `date[:7]` dentro de `common_environmental_periods`.
+- Comparación multisensor (`/sensor-comparison`): el mes `date[:7]` dentro de `common_analysis_periods`.
+- Si una fecha sintácticamente válida no está publicada, se responde `422`. Nunca se rellena con ceros.
 
 ---
 
@@ -202,6 +207,7 @@ GET /territories/province/1501/sensor-comparison?date=2026-09-15
 3. Las geometrías de `/territories` se piden una vez por tipo y se guardan en memoria.
 4. Cada panel tiene sus cuatro estados: cargando, con datos, sin datos (`null`) y error (`ApiError`).
 5. El frontend **no deriva** concordancia entre sensores ni categorías de susceptibilidad: muestra lo que devuelve la API.
+6. **Accesibilidad visual:** usar paletas ordinales aptas para daltonismo (*Viridis*, *Cividis* o escalas *ColorBrewer*) tanto en la coropleta diaria como en el mapa de calor del calendario.
 
 ---
 
@@ -266,6 +272,7 @@ Un solo archivo, `backend/app/main.py`, que carga los JSON al arrancar y los sir
 # backend/app/main.py
 import json, os
 from pathlib import Path
+from datetime import date as dt_date
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -308,6 +315,10 @@ async def api_error(_: Request, e: ApiError):
 async def bad_params(_: Request, e: RequestValidationError):
     return JSONResponse(status_code=400, content={"code": "INVALID_PARAMETER", "detail": "Parámetros inválidos"})
 
+@app.exception_handler(Exception)
+async def unhandled_error(_: Request, e: Exception):
+    return JSONResponse(status_code=500, content={"code": "INTERNAL_ERROR", "detail": "Error interno del servidor"})
+
 def check_type(t):
     if t not in TYPES: raise ApiError(400, "INVALID_PARAMETER", f"type debe ser uno de {sorted(TYPES)}")
 
@@ -315,9 +326,15 @@ def check_sensor(s):
     if s not in SENSORS: raise ApiError(400, "INVALID_PARAMETER", f"sensor debe ser uno de {sorted(SENSORS)}")
 
 def check_date(date: str, sensor=None, full=False, comparison=False, env_only=False):
+    try:
+        dt_date.fromisoformat(date)
+    except ValueError:
+        raise ApiError(400, "INVALID_PARAMETER", f"Formato de fecha inválido: {date} (usar YYYY-MM-DD)")
     period = date[:7]
-    ok = len(date) == 10
-    if sensor: ok &= period in META.get("available_periods_by_sensor", {}).get(sensor, [])
+    ok = True
+    if sensor:
+        rng = META.get("available_date_ranges_by_sensor", {}).get(sensor)
+        ok &= (rng["start"] <= date <= rng["end"]) if rng else (period in META.get("available_periods_by_sensor", {}).get(sensor, []))
     if full or env_only: ok &= period in META.get("common_environmental_periods", [])
     if comparison: ok &= period in META.get("common_analysis_periods", [])
     if not ok: raise ApiError(422, "PERIOD_NOT_AVAILABLE", f"La fecha {date} no está publicada para esta consulta")

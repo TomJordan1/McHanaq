@@ -43,21 +43,18 @@ McHanaq/
 └── presentation/
 ```
 
-**Equivalencia con el remoto.** La rama `main` tiene `frontend/`, `backend/`,
-`analytics/` y `gee/` en la raíz. Aquí están bajo `src/`. Todo lo demás coincide.
-Al leer rutas en los documentos, traduce así:
-
-| En los documentos | Aquí |
-|---|---|
-| `frontend/…` | `src/frontend/…` |
-| `backend/app/main.py` | `src/backend/app/main.py` |
-| `analytics/…` | `src/analytics/…` |
-| `gee/…` | `src/gee/…` |
-| `data/…`, `contracts/…`, `tests/…`, `docs/…` | igual |
+**Estructura unificada en todo el repositorio.** Tanto `main` como todas las ramas `feature/*` usan `src/frontend/`, `src/backend/`, `src/analytics/` y `src/gee/` (si algún documento antiguo en `docs/` menciona `frontend/`, `backend/`, `analytics/` o `gee/` en la raíz, traduce a `src/<carpeta>/`).
 
 Consecuencia práctica para el backend: el ejemplo del documento usa
 `ROOT = Path(__file__).resolve().parents[2]`. Con `src/backend/app/main.py` hay un nivel
-más, así que ahí va `parents[3]`.
+más, así que ahí va `parents[3]` (arranque desde la raíz: `uvicorn src.backend.app.main:app --port 8000`).
+
+## 2.1. Operación, almacenamiento, mapas base y despliegue
+
+* **Ownership actual (Fase A):** Tom lleva `src/analytics/` y `src/backend/` con apoyo de datos de Angelo (`src/gee/`); Sebastian lleva `src/frontend/`; Jean Pierrer lleva `contracts/`, `data/fixtures/`, `data/reference/`, `docs/`, `tests/acceptance/` y `presentation/`.
+* **Google Drive (solo puente GEE → local):** Angelo exporta CSVs desde GEE a Google Drive; Tom los descarga a `data/intermediate/` (ignorado en Git) y genera `data/processed/`. El backend nunca lee Google Drive en tiempo de ejecución.
+* **Despliegue en Render:** `src/frontend/` como *Static Site* (`VITE_API_BASE` apuntando al backend) y `src/backend/` como *Web Service* leyendo `data/processed/` desde disco (`< 30–40 MB`, con `territories.geojson` simplificado en QGIS para respetar el límite de 512 MB RAM).
+* **Mapas base libres tipo QGIS (sin API keys):** OpenTopoMap (`https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png`, ideal para hidrología y relieve), OpenStreetMap (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`) y Esri World Imagery. No usar CARTO (exige clave).
 
 ## 3. Reglas que no se negocian
 

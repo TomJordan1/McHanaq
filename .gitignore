@@ -8,20 +8,27 @@ venv/
 
 # Node / Frontend
 node_modules/
-frontend/dist/
+dist/
+src/frontend/dist/
 .vite/
+*.local
 
 # Environment & secrets
 .env
 .env.*
 !.env.example
 
-# Heavy intermediate GEE exports & raw local satellite folders (>3 GB)
+# Heavy intermediate GEE exports & raw local satellite folders
 data/intermediate/*
 !data/intermediate/.gitkeep
 MODIS/
 VIRS/
+*.tif
+*.tiff
+*.zip
 
 # OS / Editors
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/

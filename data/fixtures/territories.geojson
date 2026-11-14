@@ -1,16 +1,79 @@
 {
   "type": "FeatureCollection",
+  "data_origin": "fixture",
   "features": [
     {
       "type": "Feature",
       "properties": {
         "territory_type": "province",
         "territory_id": "1501",
-        "name": "Lima (Fixture)"
+        "territory_name": "Provincia de muestra (FIXTURE)",
+        "pfafstetter_level": null,
+        "source": "FIXTURE (geometría ficticia)"
       },
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[[-77.1, -12.2], [-76.8, -12.2], [-76.8, -11.9], [-77.1, -11.9], [-77.1, -12.2]]]
+        "coordinates": [
+          [
+            [
+              -77.2,
+              -12.3
+            ],
+            [
+              -76.6,
+              -12.3
+            ],
+            [
+              -76.6,
+              -11.7
+            ],
+            [
+              -77.2,
+              -11.7
+            ],
+            [
+              -77.2,
+              -12.3
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "territory_type": "hydro_unit",
+        "territory_id": "FX13755",
+        "territory_name": "Unidad hidrográfica de muestra (FIXTURE)",
+        "pfafstetter_level": 5,
+        "source": "FIXTURE (geometría ficticia)"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -76.9,
+              -12.0
+            ],
+            [
+              -76.3,
+              -12.0
+            ],
+            [
+              -76.3,
+              -11.5
+            ],
+            [
+              -76.9,
+              -11.5
+            ],
+            [
+              -76.9,
+              -12.0
+            ]
+          ]
+        ]
       }
     }
   ]

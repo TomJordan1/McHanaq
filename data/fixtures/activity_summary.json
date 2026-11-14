@@ -1,20 +1,132 @@
 {
   "schema_version": "1.0",
+  "data_origin": "fixture",
   "items": [
     {
-      "period_id": "2025-09",
+      "period_id": "2026-09",
       "territory_type": "province",
       "territory_id": "1501",
       "sensor": "MODIS_TERRA",
-      "fire_pixel_days_8_9": 24,
-      "fire_pixel_days_7_9": 31,
-      "valid_land_pixel_days": 9200,
+      "fire_pixel_days_8_9": 13,
+      "fire_pixel_days_7_9": 20,
+      "valid_land_pixel_days": 9265,
       "expected_land_pixel_days": 12000,
-      "activity_rate": 0.00261,
-      "observation_coverage": 0.7667,
-      "active_days": 8,
-      "max_consecutive_active_days": 3,
-      "historical_anomaly": { "value": 1.4, "status": "estimated", "baseline_years": 26 }
+      "activity_rate": 0.001403,
+      "observation_coverage": 0.7721,
+      "active_days": 11,
+      "max_consecutive_active_days": 4,
+      "historical_anomaly": {
+        "value": 1.4,
+        "status": "estimated",
+        "baseline_years": 10
+      },
+      "source_product": "MOD14A1",
+      "processing_version": "fixture-0.1.0"
+    },
+    {
+      "period_id": "2026-09",
+      "territory_type": "province",
+      "territory_id": "1501",
+      "sensor": "MODIS_AQUA",
+      "fire_pixel_days_8_9": 7,
+      "fire_pixel_days_7_9": 12,
+      "valid_land_pixel_days": 8841,
+      "expected_land_pixel_days": 12000,
+      "activity_rate": 0.000792,
+      "observation_coverage": 0.7368,
+      "active_days": 6,
+      "max_consecutive_active_days": 2,
+      "historical_anomaly": {
+        "value": 0.2,
+        "status": "estimated",
+        "baseline_years": 10
+      },
+      "source_product": "MYD14A1",
+      "processing_version": "fixture-0.1.0"
+    },
+    {
+      "period_id": "2026-09",
+      "territory_type": "province",
+      "territory_id": "1501",
+      "sensor": "VIIRS_SNPP",
+      "fire_pixel_days_8_9": 21,
+      "fire_pixel_days_7_9": 44,
+      "valid_land_pixel_days": 38212,
+      "expected_land_pixel_days": 54000,
+      "activity_rate": 0.00055,
+      "observation_coverage": 0.7076,
+      "active_days": 9,
+      "max_consecutive_active_days": 6,
+      "historical_anomaly": {
+        "value": 2.1,
+        "status": "estimated",
+        "baseline_years": 10
+      },
+      "source_product": "VNP14A1",
+      "processing_version": "fixture-0.1.0"
+    },
+    {
+      "period_id": "2026-09",
+      "territory_type": "hydro_unit",
+      "territory_id": "FX13755",
+      "sensor": "MODIS_TERRA",
+      "fire_pixel_days_8_9": 6,
+      "fire_pixel_days_7_9": 8,
+      "valid_land_pixel_days": 7170,
+      "expected_land_pixel_days": 9600,
+      "activity_rate": 0.000837,
+      "observation_coverage": 0.7469,
+      "active_days": 6,
+      "max_consecutive_active_days": 1,
+      "historical_anomaly": {
+        "value": null,
+        "status": "insufficient_baseline",
+        "baseline_years": 3
+      },
+      "source_product": "MOD14A1",
+      "processing_version": "fixture-0.1.0"
+    },
+    {
+      "period_id": "2026-09",
+      "territory_type": "hydro_unit",
+      "territory_id": "FX13755",
+      "sensor": "MODIS_AQUA",
+      "fire_pixel_days_8_9": null,
+      "fire_pixel_days_7_9": null,
+      "valid_land_pixel_days": 0,
+      "expected_land_pixel_days": 9600,
+      "activity_rate": null,
+      "observation_coverage": 0.0,
+      "active_days": null,
+      "max_consecutive_active_days": null,
+      "historical_anomaly": {
+        "value": null,
+        "status": "insufficient_baseline",
+        "baseline_years": 0
+      },
+      "source_product": "MYD14A1",
+      "processing_version": "fixture-0.1.0"
+    },
+    {
+      "period_id": "2026-09",
+      "territory_type": "hydro_unit",
+      "territory_id": "FX13755",
+      "sensor": "VIIRS_SNPP",
+      "fire_pixel_days_8_9": 6,
+      "fire_pixel_days_7_9": 10,
+      "valid_land_pixel_days": 31609,
+      "expected_land_pixel_days": 43500,
+      "activity_rate": 0.00019,
+      "observation_coverage": 0.7266,
+      "active_days": 5,
+      "max_consecutive_active_days": 1,
+      "historical_anomaly": {
+        "value": 0.6,
+        "status": "estimated",
+        "baseline_years": 8
+      },
+      "source_product": "VNP14A1",
+      "processing_version": "fixture-0.1.0"
     }
   ]
 }

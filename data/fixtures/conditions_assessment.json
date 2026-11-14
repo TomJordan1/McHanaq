@@ -1,17 +1,123 @@
 {
   "schema_version": "1.0",
+  "data_origin": "fixture",
   "items": [
     {
-      "period_id": "2025-09",
+      "period_id": "2026-09",
       "territory_type": "province",
       "territory_id": "1501",
       "classification": "moderate",
-      "decision_path": ["N0:pass", "N1:yes", "N2:yes", "N3a:no"],
-      "evidence": [
-        { "variable": "t_amb_c", "value": 19.2, "unit": "°C", "rule_status": "above_p75", "source_product": "ERA5_LAND_HOURLY", "source_period": "2025-09" },
-        { "variable": "relative_humidity_2m_pct", "value": 44.5, "unit": "%", "rule_status": "normal", "source_product": "ERA5_LAND_HOURLY", "source_period": "2025-09" }
+      "decision_path": [
+        "N0:pass",
+        "N1:yes",
+        "N2:yes",
+        "N3a:no"
       ],
-      "missing_variables": []
+      "rules_triggered": [
+        "vegetation_present",
+        "dryness_high"
+      ],
+      "modifiers": [
+        "thermal_history_elevated"
+      ],
+      "evidence": [
+        {
+          "variable": "vegetation_area_pct",
+          "value": 62.0,
+          "unit": "%",
+          "rule_status": "above_umbral_veg",
+          "source_product": "MAPBIOMAS_PERU_C4",
+          "source_period": "2024",
+          "source_resolution": "30 m"
+        },
+        {
+          "variable": "precip_30d_mm",
+          "value": 18.4,
+          "unit": "mm",
+          "rule_status": "below_seasonal_p25",
+          "source_product": "ERA5_LAND_HOURLY",
+          "source_period": "2026-09",
+          "source_resolution": "~11.1 km"
+        },
+        {
+          "variable": "wind_speed_10m_ms",
+          "value": 2.9,
+          "unit": "m/s",
+          "rule_status": "not_above_seasonal_p75",
+          "source_product": "ERA5_LAND_HOURLY",
+          "source_period": "2026-09",
+          "source_resolution": "~11.1 km"
+        },
+        {
+          "variable": "temperature_2m_c",
+          "value": 19.6,
+          "unit": "°C",
+          "rule_status": "not_above_seasonal_p75",
+          "source_product": "ERA5_LAND_HOURLY",
+          "source_period": "2026-09",
+          "source_resolution": "~11.1 km"
+        },
+        {
+          "variable": "slope_class_area_pct",
+          "value": 21.5,
+          "unit": "%",
+          "rule_status": "below_umbral_pend",
+          "source_product": "COPERNICUS_DEM_GLO30",
+          "source_period": "2011-2015",
+          "source_resolution": "30 m"
+        }
+      ],
+      "missing_variables": [],
+      "data_quality_status": "usable",
+      "source_products": [
+        "MAPBIOMAS_PERU_C4",
+        "ERA5_LAND_HOURLY",
+        "COPERNICUS_DEM_GLO30"
+      ],
+      "processing_version": "fixture-0.1.0"
+    },
+    {
+      "period_id": "2026-09",
+      "territory_type": "hydro_unit",
+      "territory_id": "FX13755",
+      "classification": "partial",
+      "decision_path": [
+        "N0:partial"
+      ],
+      "rules_triggered": [
+        "vegetation_present"
+      ],
+      "modifiers": [],
+      "evidence": [
+        {
+          "variable": "vegetation_area_pct",
+          "value": 48.0,
+          "unit": "%",
+          "rule_status": "above_umbral_veg",
+          "source_product": "MAPBIOMAS_PERU_C4",
+          "source_period": "2024",
+          "source_resolution": "30 m"
+        },
+        {
+          "variable": "soil_moisture_surface",
+          "value": 0.21,
+          "unit": "m³/m³",
+          "rule_status": "not_below_seasonal_p25",
+          "source_product": "ERA5_LAND_HOURLY",
+          "source_period": "2026-09",
+          "source_resolution": "~11.1 km"
+        }
+      ],
+      "missing_variables": [
+        "wind_speed_10m_ms",
+        "relative_humidity_2m_pct"
+      ],
+      "data_quality_status": "partial",
+      "source_products": [
+        "MAPBIOMAS_PERU_C4",
+        "ERA5_LAND_HOURLY"
+      ],
+      "processing_version": "fixture-0.1.0"
     }
   ]
 }

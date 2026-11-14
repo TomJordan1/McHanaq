@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DATA = Path(os.getenv("MCHANAQ_DATA_DIR", ROOT / "data" / "processed"))
 if not DATA.is_absolute():
     DATA = ROOT / DATA
@@ -116,6 +116,21 @@ def check_date_syntax(d: str) -> None:
         raise ApiError(400, "INVALID_PARAMETER", f"Formato de fecha inválido: {d} (usar YYYY-MM-DD)")
 
 
+def _date_in_ranges(d: str, ranges: object) -> bool:
+    if isinstance(ranges, dict):
+        ranges = [ranges]
+    if not isinstance(ranges, list):
+        return False
+    for r in ranges:
+        if not isinstance(r, dict):
+            continue
+        start = r.get("start") or r.get("from")
+        end = r.get("end") or r.get("to")
+        if start and end and start <= d <= end:
+            return True
+    return False
+
+
 def check_date(d: str, sensor: str | None = None, full: bool = False, comparison: bool = False, env_only: bool = False) -> str:
     check_date_syntax(d)
     period = d[:7]
@@ -123,13 +138,15 @@ def check_date(d: str, sensor: str | None = None, full: bool = False, comparison
     if sensor:
         rng = META.get("available_date_ranges_by_sensor", {}).get(sensor)
         if rng:
-            ok &= rng["start"] <= d <= rng["end"]
+            ok &= _date_in_ranges(d, rng)
         else:
             ok &= period in META.get("available_periods_by_sensor", {}).get(sensor, [])
     if full or env_only:
-        ok &= period in META.get("common_environmental_periods", [])
+        env_dates = META.get("common_environmental_dates")
+        ok &= _date_in_ranges(d, env_dates) if env_dates else (period in META.get("common_environmental_periods", []))
     if comparison:
-        ok &= period in META.get("common_analysis_periods", [])
+        cmp_dates = META.get("common_analysis_dates")
+        ok &= _date_in_ranges(d, cmp_dates) if cmp_dates else (period in META.get("common_analysis_periods", []))
     if not ok:
         raise ApiError(422, "PERIOD_NOT_AVAILABLE", f"La fecha {d} no está publicada para esta consulta")
     return period
@@ -204,15 +221,23 @@ def territory_metrics(
                     "value": row.get("classification"),
                 })
     elif date:
+        seen_ids: set[str] = set()
         for row in DAILY:
+            tid = str(row.get("territory_id"))
             if row.get("territory_type") == type and row.get("date") == date and (not sensor or row.get("sensor") == sensor):
+                if not sensor and tid in seen_ids:
+                    continue
+                seen_ids.add(tid)
                 val = row.get(metric)
                 items.append({"territory_type": type, "territory_id": row.get("territory_id"), "value": val})
-                if not sensor:
-                    break
     else:
+        seen_ids = set()
         for row in SUMMARY:
+            tid = str(row.get("territory_id"))
             if row.get("territory_type") == type and row.get("period_id") == resolved_period and (not sensor or row.get("sensor") == sensor):
+                if not sensor and tid in seen_ids:
+                    continue
+                seen_ids.add(tid)
                 items.append({"territory_type": type, "territory_id": row.get("territory_id"), "value": row.get(metric)})
 
     return {
@@ -247,10 +272,11 @@ def territory_summary(
 
     return {
         "schema_version": "1.0",
-        "territory": {"type": type, "id": id, "name": terr.get("name")},
+        "territory": {"type": type, "id": id, "name": terr.get("name") or terr.get("territory_name")},
         "date": date,
         "period": {"id": resolved_period},
         "sensor": sensor,
+        "daily": daily_row,
         "daily_context": daily_row,
         "activity": {
             "fire_pixel_days_8_9": summary_row.get("fire_pixel_days_8_9"),
@@ -263,7 +289,9 @@ def territory_summary(
         "environmental_conditions": {
             "classification": assess_row.get("classification", "not_evaluable"),
             "decision_path": assess_row.get("decision_path", []),
+            "factors": assess_row.get("evidence", []),
             "evidence": assess_row.get("evidence", []),
+            "modifiers": assess_row.get("modifiers", []),
             "missing_variables": assess_row.get("missing_variables", []),
         },
     }

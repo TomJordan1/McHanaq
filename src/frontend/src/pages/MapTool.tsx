@@ -9,14 +9,18 @@ import type { ToolTab } from "../components/SiteNav";
 import {
   deriveComparison,
   deriveSusceptibility,
+  fetchActivity,
   fetchCalendar,
-  fetchDailySeries,
   fetchEnvConditions,
   fetchHotspots,
+  fetchMetadata,
+  isAbort,
+  monthRange,
+  pad2,
   probeBackend,
   type BackendState,
 } from "../api/client";
-import type { EnvConditions, Hotspot, MonthCell, Sensor } from "../api/types";
+import type { DayPoint, EnvConditions, Hotspot, Metadata, MonthCell, Sensor } from "../api/types";
 import { SENSORS } from "../api/types";
 import { FIXTURE_LAST_MONTH, FIXTURE_LAST_YEAR } from "../lib/fixtures";
 import { PERU_CENTER, ringCentroid, type LatLon } from "../lib/geo";
@@ -36,6 +40,11 @@ export function MapTool({ tab, onBackend }: Props) {
   /* ------------------------------------------------------------- estado -- */
   const [year, setYear] = useState(FIXTURE_LAST_YEAR);
   const [month, setMonth] = useState(FIXTURE_LAST_MONTH);
+  /** Día seleccionado, `YYYY-MM-DD`. La API es diaria por defecto (v1.2 §4). */
+  const [day, setDay] = useState(15);
+  /** Qué pinta el mapa: el día elegido o el mes completo. */
+  const [granularity, setGranularity] = useState<"day" | "month">("day");
+  const [metadata, setMetadata] = useState<Metadata | null>(null);
   const [sensors, setSensors] = useState<Sensor[]>([...SENSORS]);
   const [calendarSensor, setCalendarSensor] = useState<Sensor>("VIIRS_SNPP");
   const [includeLow, setIncludeLow] = useState(false);
@@ -52,6 +61,7 @@ export function MapTool({ tab, onBackend }: Props) {
   const [rightOpen, setRightOpen] = useState<string | null>(null);
 
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
+  const [daily, setDaily] = useState<DayPoint[]>([]);
   const [calendars, setCalendars] = useState<Partial<Record<Sensor, MonthCell[]>>>({});
   const [env, setEnv] = useState<EnvConditions | null>(null);
   const [origin, setOrigin] = useState<"api" | "fixture">("fixture");
@@ -84,18 +94,43 @@ export function MapTool({ tab, onBackend }: Props) {
     };
   }, [onBackend]);
 
-  /* --------------------------------------------------------- hotspots ---- */
+  /* -------------------------------------------------------- metadatos ---- */
   useEffect(() => {
-    let alive = true;
-    fetchHotspots({ sensors, year, month, ring, includeLowConfidence: includeLow }).then((r) => {
-      if (!alive) return;
-      setHotspots(r.data);
-      setOrigin(r.origin);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [sensors, year, month, ring, includeLow]);
+    const ctrl = new AbortController();
+    fetchMetadata(ctrl.signal)
+      .then((r) => setMetadata(r.data))
+      .catch((e) => {
+        if (!isAbort(e)) setMetadata(null);
+      });
+    return () => ctrl.abort();
+  }, []);
+
+  /* --------------------------------------------------------- hotspots ---- */
+  const period = `${year}-${pad2(month)}`;
+  const monthSpan = useMemo(() => monthRange(year, month), [year, month]);
+  const dateIso = useMemo(() => {
+    const maxDay = Number(monthSpan.to.slice(8));
+    return `${period}-${pad2(Math.min(day, maxDay))}`;
+  }, [period, day, monthSpan.to]);
+
+  const span = granularity === "day" ? { from: dateIso, to: dateIso } : monthSpan;
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchHotspots(
+      { sensors, from: span.from, to: span.to, ring, includeLowConfidence: includeLow },
+      ctrl.signal
+    )
+      .then((r) => {
+        setHotspots(r.data);
+        setOrigin(r.origin);
+      })
+      .catch((e) => {
+        // Una petición cancelada no es un error (v1.2 §5, regla 2).
+        if (!isAbort(e)) setHotspots([]);
+      });
+    return () => ctrl.abort();
+  }, [sensors, span.from, span.to, ring, includeLow]);
 
   /* -------------------------------------------------------- calendarios -- */
   useEffect(() => {
@@ -153,10 +188,7 @@ export function MapTool({ tab, onBackend }: Props) {
     [env, thermalElevated]
   );
 
-  const daily = useMemo(() => {
-    const forSensor = hotspots.filter((h) => h.sensor === calendarSensor);
-    return fetchDailySeries(forSensor, year, month, cell?.observation_coverage ?? 0.7);
-  }, [hotspots, calendarSensor, year, month, cell]);
+
 
   const countsBySensor = useMemo(() => {
     const out: Record<string, number> = {};
@@ -166,6 +198,44 @@ export function MapTool({ tab, onBackend }: Props) {
 
   const areaLabel = ring ? "Área dibujada" : "Perú";
   const periodLabel = `${MONTHS_ES[month - 1]} ${year}`;
+
+  /* ------------------------------------------- serie diaria del mes ------ */
+  // Siempre el mes completo: alimenta el gráfico diario y el selector de día.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    (async () => {
+      const month$ = await fetchHotspots(
+        {
+          sensors: [calendarSensor],
+          from: monthSpan.from,
+          to: monthSpan.to,
+          ring,
+          includeLowConfidence: true,
+        },
+        ctrl.signal
+      );
+      const r = await fetchActivity(
+        {
+          type: "province",
+          id: ring ? "aoi" : "peru",
+          from: monthSpan.from,
+          to: monthSpan.to,
+          sensor: calendarSensor,
+          localHotspots: month$.data,
+          center,
+          coverageHint: cell?.observation_coverage ?? 0.7,
+        },
+        ctrl.signal
+      );
+      setDaily(r.data);
+    })().catch((e) => {
+      if (!isAbort(e)) setDaily([]);
+    });
+    return () => ctrl.abort();
+  }, [calendarSensor, monthSpan.from, monthSpan.to, ring, center, cell?.observation_coverage]);
+
+  /** Fila diaria del día seleccionado: contexto ambiental de la ficha. */
+  const dayRow = useMemo(() => daily.find((d) => d.date === dateIso) ?? null, [daily, dateIso]);
 
   /* -------------------------------------------------------- simulacion --- */
   const runSpread = useCallback(() => {
@@ -210,18 +280,26 @@ export function MapTool({ tab, onBackend }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, spread, spreadParams.horizonHours]);
 
+  /**
+   * Toma el viento, la vegetación y la pendiente del día seleccionado.
+   * Son las mismas variables de Fase 1 que la arquitectura v1.2 §12.1 manda
+   * reutilizar en la proyección de Fase 2.
+   */
   const applyEnvToSpread = useCallback(() => {
     if (!env) return;
     setSpreadParams((p) => ({
       ...p,
-      windSpeedMs: env.wind_speed_10m_ms,
-      windDirDeg: env.wind_direction_deg,
-      vegetationPct: env.vegetation_area_pct,
-      slopeMeanDeg: env.slope_mean_deg,
-      fuelMoisturePct: Math.max(3, Math.min(28, Math.round(env.relative_humidity_2m_pct * 0.28))),
+      windSpeedMs: dayRow?.wind_speed_10m_ms ?? env.wind_speed_10m_ms ?? p.windSpeedMs,
+      windDirDeg: dayRow?.wind_dir_deg ?? env.wind_dir_deg ?? p.windDirDeg,
+      vegetationPct: env.vegetation_area_pct ?? p.vegetationPct,
+      slopeMeanDeg: env.slope_mean_deg ?? p.slopeMeanDeg,
+      fuelMoisturePct: Math.max(
+        3,
+        Math.min(28, Math.round((dayRow?.relative_humidity_2m_pct ?? env.relative_humidity_2m_pct ?? 50) * 0.28))
+      ),
     }));
     setEnvApplied(true);
-  }, [env]);
+  }, [env, dayRow]);
 
   const visibleSpread = tab === "simulacion" ? spread : null;
   const rightItems = tab === "calendario" ? ANALYSIS_ITEMS : SPREAD_ITEMS;
@@ -250,6 +328,14 @@ export function MapTool({ tab, onBackend }: Props) {
                 setYear(y);
                 setMonth(m);
               }}
+              day={day}
+              onDay={setDay}
+              dateIso={dateIso}
+              granularity={granularity}
+              onGranularity={setGranularity}
+              metadata={metadata}
+              daily={daily}
+              territoryId={ring ? "aoi" : "peru"}
               sensors={sensors}
               onSensors={setSensors}
               calendarSensor={calendarSensor}
@@ -285,6 +371,9 @@ export function MapTool({ tab, onBackend }: Props) {
             spreadTime={spreadTime}
             spreadHorizon={spreadParams.horizonHours}
             baseLayer={baseLayer}
+            windDirDeg={dayRow?.wind_dir_deg ?? null}
+            windSpeedMs={dayRow?.wind_speed_10m_ms ?? null}
+            showWind={tab === "simulacion"}
             relayoutKey={`${leftOpen ?? ""}|${rightOpen ?? ""}|${showCalendar}`}
           />
 
@@ -302,6 +391,11 @@ export function MapTool({ tab, onBackend }: Props) {
               daily={daily}
               areaLabel={areaLabel}
               onHide={() => setShowCalendar(false)}
+              selectedDate={dateIso}
+              onPickDay={(d) => {
+                setDay(d);
+                setGranularity("day");
+              }}
             />
           )}
         </main>
@@ -315,6 +409,8 @@ export function MapTool({ tab, onBackend }: Props) {
               comparison={comparison}
               susceptibility={susceptibility}
               env={env}
+              dayRow={dayRow}
+              dateIso={dateIso}
               areaLabel={areaLabel}
               periodLabel={periodLabel}
             />
@@ -352,7 +448,10 @@ export function MapTool({ tab, onBackend }: Props) {
 
       <footer className="status">
         <span className="status__prompt">root@mchanaq ~ %</span>
-        <span><b>período</b> {periodLabel}</span>
+        <span>
+          <b>{granularity === "day" ? "día" : "mes"}</b>{" "}
+          {granularity === "day" ? dateIso : periodLabel}
+        </span>
         <span><b>área</b> {areaLabel}</span>
         <span><b>focos</b> {hotspots.length.toLocaleString("es-PE")}</span>
         <span><b>sensores</b> {sensors.length}/3</span>

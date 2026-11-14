@@ -1,6 +1,6 @@
 import { Drawer } from "./Drawer";
 import type { DockItem } from "./DockBar";
-import type { SpreadResult } from "../lib/spread";
+import { SPREAD_DISCLAIMER, SPREAD_MODEL_NAME, type SpreadResult } from "../lib/spread";
 import { formatLatLon, type LatLon } from "../lib/geo";
 
 export interface SpreadParams {
@@ -13,7 +13,7 @@ export interface SpreadParams {
 }
 
 export const SPREAD_ITEMS: DockItem[] = [
-  { id: "escenario", label: "Escenario de simulación", icon: "flame" },
+  { id: "escenario", label: "Escenario · Fase 2", icon: "flame" },
   { id: "condiciones", label: "Condiciones", icon: "sliders" },
   { id: "resultado", label: "Resultado y reproducción", icon: "play" },
 ];
@@ -50,11 +50,16 @@ export function SpreadRail(p: Props) {
     case "escenario":
       return (
         <Drawer title="Escenario" onClose={p.onClose}>
-          <div className="note note--ember">
+          <span className="chip chip--warn">Fase 2 · opcional</span>
+          <div className="note note--ember" style={{ marginTop: 10 }}>
             <b>Modelo exploratorio, no validado.</b> Estima hasta dónde podría avanzar un frente
             desde una ignición <i>hipotética</i>, con las condiciones que fijes. No predice si habrá
             un incendio, ni dónde, ni cuándo. No usar para decisiones operativas ni de evacuación.
           </div>
+          <p className="mono-sm" style={{ marginTop: 9 }}>
+            Esta capa está desacoplada de la Fase 1: no altera el calendario, la comparación
+            multisensor ni ningún endpoint del contrato.
+          </p>
           <dl className="kv" style={{ marginTop: 13 }}>
             <dt>Área de interés</dt>
             <dd data-null={!p.ring}>{p.ring ? `${p.ring.length} vértices` : "Sin definir"}</dd>
@@ -193,7 +198,9 @@ export function SpreadRail(p: Props) {
             </div>
           </div>
 
-          <div className="legend__title" style={{ marginTop: 14 }}>Superficie acumulada</div>
+          <div className="legend__title" style={{ marginTop: 14 }}>
+            Isócronas · superficie acumulada
+          </div>
           <dl className="kv">
             {p.result.bands.map((b) => (
               <div key={b.hours} style={{ display: "contents" }}>
@@ -214,11 +221,18 @@ export function SpreadRail(p: Props) {
           <ul className="assume">
             {p.result.assumptions.map((a) => <li key={a}>{a}</li>)}
           </ul>
-          <div className="note" style={{ marginTop: 11 }}>
-            Forma elíptica de Anderson (1983), pendiente con la regla de duplicar la velocidad cada
-            10°, y amortiguamiento por humedad de Rothermel. Cuando el backend publique SRTM y
-            cobertura reales, se reemplazan el relieve y el combustible sintéticos.
+          <dl className="kv" style={{ marginTop: 13 }}>
+            <dt>Modelo</dt>
+            <dd style={{ fontSize: 10 }}>{SPREAD_MODEL_NAME}</dd>
+          </dl>
+          <div className="note note--ember" style={{ marginTop: 10 }}>
+            {SPREAD_DISCLAIMER}
           </div>
+          <p className="mono-sm" style={{ marginTop: 9 }}>
+            Forma elíptica de Anderson (1983), pendiente con la regla de duplicar la velocidad cada
+            10° y amortiguamiento por humedad de Rothermel. Cuando el backend publique el DEM por
+            época y la cobertura reales, se reemplazan el relieve y el combustible sintéticos.
+          </p>
         </Drawer>
       );
 

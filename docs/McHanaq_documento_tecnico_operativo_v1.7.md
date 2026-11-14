@@ -182,8 +182,9 @@ La diferenciación de McHanaq debe plantearse como **integración e interpretaci
 |---|---|---|---|
 | Cobertura y uso del suelo | MapBiomas Perú, Colección 4 | 30 m; anual, 1985–2025 | Fuente preferida para proporción y distribución de clases. Usar el mapa del año más próximo disponible que no sea posterior al período analizado; para 2026, la última referencia anual publicada es 2025. La clase de cobertura no mide directamente inflamabilidad ni humedad del combustible. |
 | Estado de vegetación | MODIS `MODIS/061/MOD13A3` (preferido para el MVP) | 1 km; mensual | NDVI/EVI alineados con el período mensual. Aplicar `DetailedQA` y factor de escala 0.0001. NDVI bajo no equivale automáticamente a vegetación seca. `MOD13Q1` (250 m; 16 días) queda como alternativa si se necesita más detalle espacial y se documenta cómo se asignan sus compuestos al mes. |
-| Meteorología y humedad del suelo | ERA5-Land Hourly `ECMWF/ERA5_LAND/HOURLY` | Aproximadamente 11.1 km; horario | Viento a 10 m, temperatura, punto de rocío, precipitación y humedad del suelo. Es reanálisis, no medición local a 1 km. La fecha más reciente disponible varía; debe consultarse directamente en GEE antes de fijar el período de análisis. |
-| Topografía | SRTM `USGS/SRTMGL1_003` | Aproximadamente 30 m | Elevación y derivación de pendiente y orientación; la pendiente es factor contextual, no predictor autónomo. |
+| Temperatura del suelo (LST) | MODIS `MODIS/061/MOD11A1` / `MYD11A1` y VIIRS `NASA/VIIRS/002/VNP21A1D` / `VNP21A1N` | 1 km; diario | Temperatura superficial del suelo (`t_suelo_c` en °C) extraída directamente de MODIS y VIIRS, filtrada por banda `QC`. |
+| Meteorología, temperatura ambiente y humedad del suelo | ERA5-Land Hourly `ECMWF/ERA5_LAND/HOURLY` | Aproximadamente 11.1 km; horario (agregado diario) | Viento a 10 m (`u10`, `v10` para velocidad y dirección diaria `wind_dir_deg`), temperatura ambiente a 2 m (`t_amb_c`), punto de rocío, precipitación y humedad del suelo. Es reanálisis, no medición local a 1 km. |
+| Topografía (DEM por época) | SRTM `USGS/SRTMGL1_003` / NASADEM `NASA/NASADEM_HGT/001` (MODIS 2000–2011) y Copernicus DEM `COPERNICUS/DEM/GLO30` (VIIRS 2012–presente) | Aproximadamente 30 m | Altura (`elevation_m`, `dem_source`) según época del sensor, más derivación de pendiente y orientación; la pendiente es factor contextual, no predictor autónomo. |
 | Áreas quemadas | MapBiomas Fuego, Colección 2 | 30 m; anual, 1990–2025 | Referencia reciente para revisión retrospectiva. La colección se lanzó el 10/11/2026; comprobar el acceso y la versión descargable. |
 | Límites provinciales | INEI / IDE | Capa vectorial; revisar metadatos y versión | Unidad administrativa para agregación y comunicación. |
 | Unidades hidrográficas | ANA / GeoIDEP, metodología Pfafstetter | Capa vectorial jerárquica | Unidad hidrográfica. Debe elegirse un solo nivel para comparaciones entre cuencas. |
@@ -361,18 +362,19 @@ El contexto se agregará por territorio y período, conservando siempre la resol
 - Complementar con humedad del suelo y/o precipitación antecedente de ERA5-Land.
 - Presentar estas variables como proxies/contexto. NDVI bajo no significa necesariamente sequedad; la humedad del suelo no es humedad del combustible fino o muerto.
 
-**C. Meteorología**
+**C. Meteorología y condiciones térmicas (proceso diario)**
 
-- Calcular velocidad de viento a partir de `u_component_of_wind_10m` y `v_component_of_wind_10m`.
-- Resumir temperatura y, si se usa temperatura y punto de rocío, estimar humedad relativa con una fórmula documentada.
+- Calcular velocidad y dirección diaria del viento (`wind_speed_10m_ms = sqrt(u² + v²)`, `wind_dir_deg = (atan2(-u, -v) * 180 / π + 360) % 360`) a partir de `u_component_of_wind_10m` y `v_component_of_wind_10m` de `ERA5-Land` (~11.1 km, continuo 2000–presente): promediar `u` y `v` por día/territorio antes de calcular el ángulo (convención meteorológica: desde dónde sopla, 0° = N, 90° = E, 180° = S, 270° = O; nunca promediar ángulos directamente). **NOAA ARL READY (`READYamet.php` / GDAS)** queda como fuente opcional de contraste puntual para eventos de la demo.
+- Incluir temperatura ambiente (`t_amb_c`, `temperature_2m_c` de ERA5-Land) y temperatura superficial del suelo (`t_suelo_c` de MODIS `MOD11A1`/`MYD11A1` y VIIRS `VNP21A1D`/`VNP21A1N` convertida a °C); si se usa temperatura y punto de rocío, estimar humedad relativa con una fórmula documentada.
 - Para precipitación, preferir `total_precipitation_hourly` (m por hora) y convertir a mm antes de sumar ventanas antecedentes. No sumar directamente la banda acumulada `total_precipitation` sin respetar su reinicio diario y convención de acumulación.
 - Calcular acumulados antecedentes (por ejemplo, 30 días) solo para períodos completos y publicados.
 - Comparar con referencias estacionales locales, evitando umbrales absolutos únicos para todo Perú.
 - La fecha más reciente de ERA5-Land debe consultarse en el catálogo/GEE; la evaluación ambiental representa el período histórico procesado, no meteorología en tiempo real.
 
-**D. Topografía**
+**D. Topografía (DEM por época)**
 
-- Derivar pendiente y orientación (aspect) desde SRTM.
+- Extraer altura (`elevation_m`, `dem_source`) del modelo DEM correspondiente a la época del sensor: SRTM/NASADEM (época 2000) para el tramo MODIS (2000–2011) y Copernicus DEM GLO-30 (época 2011–2015) para el tramo VIIRS (2012–presente).
+- Derivar pendiente y orientación (aspect) desde el DEM.
 - Mostrar distribución de superficie por rangos de pendiente, no solo la pendiente media del polígono. Los rangos se fijan y documentan como parámetros; no se interpretan como umbrales universales de propagación.
 - Tratar pendiente y orientación como factores contextuales; el efecto depende de combustible y meteorología.
 
@@ -598,23 +600,34 @@ Una fila por fecha, territorio y sensor:
 - `observation_coverage`
 - `source_product`, `processing_version`
 
-#### Campos mínimos de `environmental_context.csv`
+#### Campos mínimos de `environmental_daily.csv` y `environmental_context.csv`
 
-Una fila por territorio y mes calendario (las variables estáticas pueden repetirse con su año de referencia):
+Para el procesamiento longitudinal diario (`environmental_daily.csv`, una fila por fecha `YYYY-MM-DD` y territorio):
+
+- `date`, `territory_type`, `territory_id`
+- `t_amb_c` (temperatura ambiente a 2 m, °C: `temperature_2m - 273.15`)
+- `relative_humidity_2m_pct` (humedad relativa %, calculada desde `temperature_2m` y `dewpoint_temperature_2m` de ERA5-Land vía Magnus-Tetens)
+- `t_suelo_c` (temperatura superficial del suelo LST desde MODIS/VIIRS: `valor * 0.02 - 273.15`, °C) y `lst_valid_pixel_pct` (control de nubes `< 30%`, es decir, `>= 70%` válido)
+- `wind_dir_deg` (dirección diaria del viento, 0–360°), `wind_speed_10m_ms` (m/s)
+- `elevation_m` (altura en m s.n.m.: banda `elevation` en SRTM/NASADEM, banda `DEM` en Copernicus GLO-30), `dem_source` (modelo DEM según época MODIS/VIIRS)
+
+Para el contexto mensual (`environmental_context.csv`, una fila por territorio y mes calendario, agregado en `analytics/` por media aritmética y media ponderada por cobertura válida diaria):
 
 - `period_id` (`YYYY-MM`), `territory_type`, `territory_id`, `landcover_year`
 - proporciones de cobertura por grupo (`vegetation_area_pct` o campos equivalentes acordados), conservando por separado bosques, matorrales, pastizales, agricultura, áreas urbanas, suelo desnudo y agua cuando la leyenda lo permita
 - `ndvi_median`, `ndvi_anomaly` (si se procesan)
-- `precip_30d_mm`, `soil_moisture_surface` (si se procesan)
-- `wind_speed_10m_ms`, `temperature_2m_c`, `relative_humidity_2m_pct` (según disponibilidad)
-- estadísticas de pendiente (`slope_class_area_pct` o equivalentes)
+- `precip_30d_mm`, `soil_moisture_surface` (`volumetric_soil_water_layer_1`, m³/m³)
+- `t_amb_c`, `t_suelo_c`, `relative_humidity_2m_pct`, `wind_dir_deg`, `wind_speed_10m_ms` (media aritmética y ponderada por cobertura)
+- `elevation_m`, `dem_source` y estadísticas de pendiente (`slope_class_area_pct` o equivalentes)
 - `source_resolution`, `source_product`, `source_period_start`, `source_period_end`, `processing_version`
 
 `metadata.json` debe incluir:
 
+- `available_date_ranges_by_sensor`: rango diario `{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}` por sensor.
 - `available_periods_by_sensor`: meses completos procesados para cada sensor.
 - `common_environmental_periods`: meses para los que están disponibles los bloques ambientales obligatorios.
 - `common_analysis_periods`: intersección de los meses disponibles en los tres sensores y del contexto ambiental; se usa para comparaciones multisensor justas.
+- `min_baseline_years`: `5` (cubierto tanto por MODIS 2000–2025 como por VIIRS 2018–2025).
 
 Para una ficha de un sensor, el backend valida que el mes esté disponible para ese sensor y en `common_environmental_periods`. Para una comparación de los tres sensores, exige además que figure en `common_analysis_periods`. Solo se exponen meses preprocesados y con cobertura mínima definida por el equipo.
 
@@ -633,7 +646,10 @@ Para una ficha de un sensor, el backend valida que el mes esté disponible para 
     "date": "2026-09-01", "territory_type": "province", "territory_id": "1501",
     "sensor": "MODIS_TERRA", "fire_pixels_low": 2,
     "fire_pixels_nominal_high": 1, "valid_land_pixels": 340,
-    "expected_land_pixels_per_day": 400, "observation_coverage": 0.85
+    "expected_land_pixels_per_day": 400, "observation_coverage": 0.85,
+    "t_amb_c": 18.4, "relative_humidity_2m_pct": 42.1, "t_suelo_c": 29.7,
+    "lst_valid_pixel_pct": 88.5, "wind_dir_deg": 135.0, "wind_speed_10m_ms": 3.8,
+    "elevation_m": 2850.0, "dem_source": "COPERNICUS_GLO30"
   }]
 }
 ```
@@ -701,18 +717,19 @@ Los ejemplos contienen números ficticios y solo sirven para desarrollar y proba
 
 ### 8.5. Contrato de API entre backend y frontend
 
-**El frontend solo consume esta API.** No lee CSV internos, no consulta GEE y no calcula indicadores. Como los resultados se preparan por mes, la API expone únicamente períodos publicados en `metadata.json`.
+**El frontend solo consume esta API.** No lee CSV internos, no consulta GEE y no calcula indicadores. La API sirve en **resolución diaria por defecto** (`date=YYYY-MM-DD` y rangos `from`/`to=YYYY-MM-DD`), manteniendo `period=YYYY-MM` como parámetro opcional para contexto/anomalía mensual, exponiendo únicamente fechas publicadas en `metadata.json`.
 
 | Método y ruta | Para qué sirve | Parámetros principales |
 |---|---|---|
 | `GET /api/v1/health` | Comprobar que el backend está activo. | Ninguno. |
-| `GET /api/v1/metadata` | Obtener fuentes, sensores, unidades, resoluciones y meses disponibles por fuente. | Ninguno. |
+| `GET /api/v1/metadata` | Obtener fuentes, sensores, unidades, resoluciones y fechas/períodos disponibles por fuente. | Ninguno. |
 | `GET /api/v1/territories?type=province` | Obtener geometrías y nombres territoriales. | `type=province` o `hydro_unit`. Devuelve GeoJSON FeatureCollection. |
-| `GET /api/v1/territory-metrics?type=province&period=2026-09&sensor=MODIS_TERRA&metric=activity_rate` | Obtener indicadores para colorear la coropleta. | `type`, `period`, `metric`; `sensor` es obligatorio para métricas de actividad y no aplica a la clasificación ambiental. Devuelve `period`, `metric`, `unit` e `items` con `territory_type`, `territory_id` y el valor; el frontend une los resultados con geometrías por ID. |
-| `GET /api/v1/territories/{type}/{id}/summary?period=2026-09&sensor=MODIS_TERRA` | Obtener la ficha de un territorio. | `period`, `sensor`. Incluye actividad térmica y evaluación ambiental del mes. |
-| `GET /api/v1/territories/{type}/{id}/activity?period=2026-09&sensor=MODIS_TERRA` | Obtener la serie diaria dentro del mes seleccionado. | `period`, `sensor`. Devuelve los días y conteos diarios; el resumen mensual/anomalía viene precomputado. |
-| `GET /api/v1/territories/{type}/{id}/sensor-comparison?period=2026-09` | Obtener comparación multisensor para el mismo territorio y mes. | `period`. Solo se habilita para meses en `common_analysis_periods`; devuelve indicadores separados por sensor, `status` e `interpretation` precomputados por Tom. |
-| `GET /api/v1/territories/{type}/{id}/hotspots?period=2026-09&sensor=MODIS_TERRA` | Obtener la capa opcional de puntos de hotspots. | `period`, `sensor`. Solo se habilita si `hotspots.geojson` fue generado. |
+| `GET /api/v1/territory-metrics?type=province&date=2026-09-15&sensor=MODIS_TERRA&metric=activity_rate` | Obtener indicadores diarios para colorear la coropleta. | `type`, `date` (o `period` opcional), `metric`; `sensor` es obligatorio para métricas de actividad y opcional para clasificación o métricas ambientales (`t_amb_c`, `t_suelo_c`, `wind_dir_deg`, `elevation_m`). Devuelve `date`, `metric`, `unit` e `items` con `territory_type`, `territory_id` y el valor. |
+| `GET /api/v1/territories/{type}/{id}/summary?date=2026-09-15&sensor=MODIS_TERRA` | Obtener la ficha diaria de un territorio. | `date` (o `period` opcional), `sensor`. Incluye actividad térmica del día, variables diarias (`t_amb_c`, `t_suelo_c`, `wind_dir_deg`, `wind_speed_10m_ms`, `elevation_m`) y contexto/anomalía mensual. |
+| `GET /api/v1/territories/{type}/{id}/activity?from=2026-09-01&to=2026-09-30&sensor=MODIS_TERRA` | Obtener la serie diaria del rango seleccionado. | `from`, `to` (o `period` opcional), `sensor`. Devuelve los días, conteos diarios y variables ambientales diarias. |
+| `GET /api/v1/territories/{type}/{id}/sensor-comparison?date=2026-09-15` | Obtener comparación multisensor diaria. | `date` (o `period` opcional). Devuelve indicadores separados por sensor, `status` e `interpretation` precomputados por Tom. |
+| `GET /api/v1/territories/{type}/{id}/export.csv?from=2026-09-01&to=2026-09-30&sensor=MODIS_TERRA` | Descargar CSV diario del territorio en el rango pedido. | `from`, `to`, `sensor`. |
+| `GET /api/v1/territories/{type}/{id}/hotspots?date=2026-09-15&sensor=MODIS_TERRA` | Obtener la capa opcional de puntos de hotspots. | `date`, `sensor`. Solo se habilita si `hotspots.geojson` fue generado. |
 
 Valores permitidos para `type`: `province` y `hydro_unit`. Valores permitidos para `sensor`: `MODIS_TERRA`, `MODIS_AQUA` y `VIIRS_SNPP`. `period` usa `YYYY-MM`; para una ficha completa debe figurar en `available_periods_by_sensor[sensor]` y en `common_environmental_periods`. Para comparar los tres sensores en el mismo período, debe figurar en `common_analysis_periods`. Para una consulta de solo actividad basta con `available_periods_by_sensor[sensor]`. `metric` se restringe a nombres enumerados en el contrato, por ejemplo `activity_rate`, `fire_pixel_days_8_9`, `active_days`, `max_consecutive_active_days`, `observation_coverage` o `conditions_classification`. El frontend consulta un sensor a la vez; la comparación multisensor se presenta como series separadas. Si un mes no está disponible para una colección, la API debe indicarlo como no disponible, no rellenarlo con ceros.
 

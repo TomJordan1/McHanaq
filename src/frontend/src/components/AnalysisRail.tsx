@@ -2,13 +2,14 @@ import { Drawer } from "./Drawer";
 import type { DockItem } from "./DockBar";
 import type {
   ComparisonStatus,
+  DayPoint,
   EnvConditions,
   MonthCell,
   SensorComparison,
   SusceptibilityAssessment,
   SusceptibilityClass,
 } from "../api/types";
-import { SENSORS, SENSOR_META } from "../api/types";
+import { MIN_BASELINE_YEARS, SENSORS, SENSOR_META } from "../api/types";
 
 export const ANALYSIS_ITEMS: DockItem[] = [
   { id: "indicadores", label: "Indicadores del período", icon: "gauge" },
@@ -52,6 +53,9 @@ interface Props {
   comparison: SensorComparison;
   susceptibility: SusceptibilityAssessment;
   env: EnvConditions | null;
+  /** Fila del día seleccionado. La ficha es diaria (contrato v1.2 §4.2). */
+  dayRow: DayPoint | null;
+  dateIso: string;
   areaLabel: string;
   periodLabel: string;
 }
@@ -92,14 +96,61 @@ export function AnalysisRail(p: Props) {
               </div>
             </div>
           </div>
-          <dl className="kv" style={{ marginTop: 14 }}>
+          <div className="legend__title" style={{ marginTop: 15 }}>
+            Contexto del día · {p.dateIso}
+          </div>
+          <dl className="kv">
+            <dt>Temp. ambiente</dt>
+            <dd data-null={p.dayRow?.t_amb_c == null}>
+              {p.dayRow?.t_amb_c != null ? `${p.dayRow.t_amb_c} °C` : "Sin datos"}
+            </dd>
+            <dt>Temp. del suelo</dt>
+            <dd data-null={p.dayRow?.t_suelo_c == null}>
+              {p.dayRow?.t_suelo_c != null
+                ? `${p.dayRow.t_suelo_c} °C`
+                : p.dayRow
+                ? "Nublado (>30 %)"
+                : "Sin datos"}
+            </dd>
+            <dt>Píxeles LST válidos</dt>
+            <dd data-null={p.dayRow?.lst_valid_pixel_pct == null}>
+              {p.dayRow?.lst_valid_pixel_pct != null
+                ? `${p.dayRow.lst_valid_pixel_pct} %`
+                : "Sin datos"}
+            </dd>
+            <dt>Humedad relativa</dt>
+            <dd data-null={p.dayRow?.relative_humidity_2m_pct == null}>
+              {p.dayRow?.relative_humidity_2m_pct != null
+                ? `${p.dayRow.relative_humidity_2m_pct} %`
+                : "Sin datos"}
+            </dd>
+            <dt>Viento</dt>
+            <dd data-null={p.dayRow?.wind_dir_deg == null}>
+              {p.dayRow?.wind_dir_deg != null
+                ? `${p.dayRow.wind_speed_10m_ms} m/s · ${Math.round(p.dayRow.wind_dir_deg)}°`
+                : "Sin datos"}
+            </dd>
+            <dt>Altura</dt>
+            <dd data-null={p.dayRow?.elevation_m == null}>
+              {p.dayRow?.elevation_m != null ? `${p.dayRow.elevation_m} m` : "Sin datos"}
+            </dd>
+            <dt>Modelo DEM</dt>
+            <dd data-null={!p.dayRow?.dem_source}>{p.dayRow?.dem_source ?? "Sin datos"}</dd>
+          </dl>
+
+          <div className="legend__title" style={{ marginTop: 15 }}>
+            Anomalía mensual
+          </div>
+          <dl className="kv">
             <dt>Anomalía robusta</dt>
             <dd data-null={p.cell?.historical_anomaly == null}>
               {p.cell?.historical_anomaly != null ? `z = ${p.cell.historical_anomaly.toFixed(2)}` : "No estimable"}
             </dd>
             <dt>Años de línea base</dt>
             <dd data-null={!p.cell?.baseline_years}>
-              {p.cell?.baseline_years ? p.cell.baseline_years : "Historial insuficiente"}
+              {p.cell?.baseline_years
+                ? `${p.cell.baseline_years} (mín. ${MIN_BASELINE_YEARS})`
+                : "Historial insuficiente"}
             </dd>
           </dl>
           <p className="mono-sm" style={{ marginTop: 12 }}>
@@ -176,9 +227,13 @@ export function AnalysisRail(p: Props) {
               <dl className="kv">
                 <dt>Vegetación combustible</dt><dd>{p.env.vegetation_area_pct} %</dd>
                 <dt>Precipitación 30 d</dt><dd>{p.env.precip_30d_mm} mm</dd>
-                <dt>Humedad del suelo</dt><dd>{p.env.soil_moisture_surface.toFixed(3)} m³/m³</dd>
+                <dt>Humedad del suelo</dt><dd>{p.env.soil_moisture_surface?.toFixed(3) ?? "—"} m³/m³</dd>
                 <dt>Viento a 10 m</dt><dd>{p.env.wind_speed_10m_ms} m/s</dd>
-                <dt>Temperatura</dt><dd>{p.env.temperature_2m_c} °C</dd>
+                <dt>Temp. ambiente</dt><dd>{p.env.t_amb_c ?? "—"} °C</dd>
+                <dt>Temp. del suelo</dt>
+                <dd data-null={p.env.t_suelo_c == null}>
+                  {p.env.t_suelo_c != null ? `${p.env.t_suelo_c} °C` : "No estimable"}
+                </dd>
                 <dt>Humedad relativa</dt><dd>{p.env.relative_humidity_2m_pct} %</dd>
                 <dt>Pendiente media</dt><dd>{p.env.slope_mean_deg}°</dd>
                 <dt>Agua y humedales</dt><dd>{p.env.water_area_pct} %</dd>

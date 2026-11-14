@@ -31,6 +31,11 @@ interface Props {
   spreadTime: number;
   spreadHorizon: number;
   baseLayer: "dark" | "relief" | "satellite";
+  /** Dirección del viento del día, 0–360°, desde dónde sopla. */
+  windDirDeg: number | null;
+  windSpeedMs: number | null;
+  /** La rosa de viento solo se muestra en la vista de simulación. */
+  showWind: boolean;
   /** Cambia cuando el ancho disponible cambia; obliga a Leaflet a reencuadrar. */
   relayoutKey: string;
 }
@@ -85,6 +90,9 @@ export function MapStage(props: Props) {
     spreadTime,
     spreadHorizon,
     baseLayer,
+    windDirDeg,
+    windSpeedMs,
+    showWind,
     relayoutKey,
   } = props;
 
@@ -521,13 +529,33 @@ export function MapStage(props: Props) {
                 </span>
               </div>
             ))}
+            {showWind && windDirDeg !== null && (
+              <div className="legend__item" style={{ marginTop: 2 }}>
+                <i
+                  className="legend__swatch"
+                  style={{
+                    background: "transparent",
+                    borderLeft: "5px solid transparent",
+                    borderRight: "5px solid transparent",
+                    borderBottom: "9px solid var(--ember)",
+                    width: 0,
+                    height: 0,
+                    transform: `rotate(${windDirDeg + 180}deg)`,
+                  }}
+                />
+                <span>
+                  Viento {windSpeedMs?.toFixed(1) ?? "—"} m/s · desde{" "}
+                  {Math.round(windDirDeg)}°
+                </span>
+              </div>
+            )}
             {spread && (
               <div className="legend__item">
                 <i
                   className="legend__swatch"
                   style={{ background: "linear-gradient(90deg,#f3e55c,#e65c2f,#480f62)" }}
                 />
-                <span>Frente simulado (reciente → antiguo)</span>
+                <span>Frente simulado · Fase 2 · +6/12/24 h</span>
               </div>
             )}
           </div>

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Drawer } from "./Drawer";
 import type { DockItem } from "./DockBar";
-import type { Hotspot, MonthCell, Sensor } from "../api/types";
+import type { DayPoint, Hotspot, Metadata, MonthCell, Sensor } from "../api/types";
 import { SENSORS, SENSOR_META } from "../api/types";
 import { FIXTURE_FIRST_YEAR, FIXTURE_LAST_MONTH, FIXTURE_LAST_YEAR } from "../lib/fixtures";
-import { calendarCsv, download, hotspotsCsv, ringGeoJson } from "../lib/csv";
+import { calendarCsv, dailyCsv, download, hotspotsCsv, ringGeoJson } from "../lib/csv";
+import { exportCsvUrl, getBackendState, monthRange } from "../api/client";
 import { insidePeru, ringAreaKm2, type LatLon } from "../lib/geo";
 
 const MONTHS = [
@@ -26,6 +27,14 @@ interface Props {
   year: number;
   month: number;
   onPeriod: (y: number, m: number) => void;
+  day: number;
+  onDay: (d: number) => void;
+  dateIso: string;
+  granularity: "day" | "month";
+  onGranularity: (g: "day" | "month") => void;
+  metadata: Metadata | null;
+  daily: DayPoint[];
+  territoryId: string;
   sensors: Sensor[];
   onSensors: (s: Sensor[]) => void;
   calendarSensor: Sensor;
@@ -51,6 +60,7 @@ export function ControlRail(p: Props) {
   const [radius, setRadius] = useState("60");
   const [coordError, setCoordError] = useState<string | null>(null);
 
+  const lastDay = Number(monthRange(p.year, p.month).to.slice(8));
   const years: number[] = [];
   for (let y = FIXTURE_LAST_YEAR; y >= FIXTURE_FIRST_YEAR; y--) years.push(y);
   const monthDisabled = (m: number) => p.year === FIXTURE_LAST_YEAR && m > FIXTURE_LAST_MONTH;
@@ -114,6 +124,46 @@ export function ControlRail(p: Props) {
               ))}
             </select>
           </div>
+          <div className="field">
+            <label className="field__label" htmlFor="sel-day">
+              Día <span className="field__value">{p.dateIso}</span>
+            </label>
+            <input
+              id="sel-day"
+              type="range"
+              min={1}
+              max={lastDay}
+              step={1}
+              value={Math.min(p.day, lastDay)}
+              onChange={(e) => {
+                p.onDay(Number(e.target.value));
+                p.onGranularity("day");
+              }}
+            />
+            <div className="legend__scale">
+              <span>01</span>
+              <span>{String(lastDay).padStart(2, "0")}</span>
+            </div>
+          </div>
+
+          <div className="field">
+            <span className="field__label">Qué pinta el mapa</span>
+            <div className="btn-row">
+              <button
+                className={`btn${p.granularity === "day" ? " btn--on" : ""}`}
+                onClick={() => p.onGranularity("day")}
+              >
+                Ese día
+              </button>
+              <button
+                className={`btn${p.granularity === "month" ? " btn--on" : ""}`}
+                onClick={() => p.onGranularity("month")}
+              >
+                Mes completo
+              </button>
+            </div>
+          </div>
+
           <button
             className="toggle"
             aria-pressed={p.showCalendar}
@@ -122,9 +172,18 @@ export function ControlRail(p: Props) {
             <i className="toggle__box" style={{ background: p.showCalendar ? "var(--acid)" : "transparent" }} />
             <span>Mostrar el calendario</span>
           </button>
+
           <p className="mono-sm">
-            Solo se ofrecen meses calendario completos. El período común entre sensores lo publica
-            el backend en <code>metadata.json</code>.
+            La API sirve en resolución diaria; el mes solo aporta contexto y anomalía. Las fechas
+            disponibles las publica el backend en <code>metadata.json</code>
+            {p.metadata ? (
+              <>
+                {" "}
+                (línea base mínima: {p.metadata.min_baseline_years} años).
+              </>
+            ) : (
+              "."
+            )}
           </p>
         </Drawer>
       );
@@ -237,6 +296,18 @@ export function ControlRail(p: Props) {
             </button>
             <button
               className="btn btn--block"
+              disabled={p.daily.length === 0}
+              onClick={() =>
+                download(
+                  `mchanaq_diario_${p.dateIso.slice(0, 7)}_${p.calendarSensor}.csv`,
+                  dailyCsv(p.daily, p.calendarSensor, p.territoryId, "province", p.origin)
+                )
+              }
+            >
+              Serie diaria CSV ({p.daily.length} días)
+            </button>
+            <button
+              className="btn btn--block"
               disabled={p.calendar.length === 0}
               onClick={() =>
                 download(`mchanaq_calendario_${p.calendarSensor}.csv`, calendarCsv(p.calendar, p.calendarSensor, p.origin))
@@ -255,9 +326,26 @@ export function ControlRail(p: Props) {
               Área GeoJSON
             </button>
           </div>
+          {getBackendState() === "online" && (
+            <a
+              className="btn btn--block"
+              style={{ marginTop: 6, display: "block", textAlign: "center", textDecoration: "none" }}
+              href={exportCsvUrl(
+                "province",
+                p.territoryId,
+                monthRange(p.year, p.month).from,
+                monthRange(p.year, p.month).to,
+                p.calendarSensor
+              )}
+            >
+              Exportar desde el backend
+            </a>
+          )}
           <p className="mono-sm" style={{ marginTop: 12 }}>
-            Cada archivo lleva una columna <code>data_origin</code> que indica si la fila viene del
-            backend o del juego de muestra.
+            La serie diaria lleva las columnas de <code>environmental_daily.csv</code>:
+            <code>t_amb_c</code>, <code>t_suelo_c</code>, <code>wind_dir_deg</code> y{" "}
+            <code>elevation_m</code>. Cada archivo incluye <code>data_origin</code>, que indica si
+            la fila viene del backend o del juego de muestra.
           </p>
         </Drawer>
       );

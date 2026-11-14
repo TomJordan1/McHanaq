@@ -1,4 +1,4 @@
-import type { Hotspot, MonthCell } from "../api/types";
+import type { DayPoint, Hotspot, MonthCell } from "../api/types";
 
 function escapeCell(v: unknown): string {
   const s = v === null || v === undefined ? "" : String(v);
@@ -21,7 +21,13 @@ export function download(filename: string, content: string, mime = "text/csv;cha
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-/** CSV de focos detectados en la busqueda actual. */
+const PRODUCTS: Record<string, string> = {
+  MODIS_TERRA: "MOD14A1.061",
+  MODIS_AQUA: "MYD14A1.061",
+  VIIRS_SNPP: "VNP14A1.002",
+};
+
+/** CSV de focos detectados en la búsqueda actual. */
 export function hotspotsCsv(points: Hotspot[], origin: string): string {
   const header = [
     "latitude",
@@ -34,11 +40,6 @@ export function hotspotsCsv(points: Hotspot[], origin: string): string {
     "confidence",
     "data_origin",
   ];
-  const PRODUCTS: Record<string, string> = {
-    MODIS_TERRA: "MOD14A1.061",
-    MODIS_AQUA: "MYD14A1.061",
-    VIIRS_SNPP: "VNP14A1.002",
-  };
   return toCsv(
     header,
     points.map((h) => [
@@ -50,6 +51,67 @@ export function hotspotsCsv(points: Hotspot[], origin: string): string {
       PRODUCTS[h.sensor] ?? "",
       h.frp,
       h.confidence,
+      origin,
+    ])
+  );
+}
+
+/**
+ * CSV de la serie diaria del territorio: actividad más contexto ambiental.
+ * Reproduce las columnas de `environmental_daily.csv` y de
+ * `GET /territories/{type}/{id}/export.csv` (arquitectura v1.2 §4.2), para que
+ * el archivo que baja el usuario sin backend tenga la misma forma.
+ */
+export function dailyCsv(
+  rows: DayPoint[],
+  sensor: string,
+  territoryId: string,
+  territoryType: string,
+  origin: string
+): string {
+  const header = [
+    "date",
+    "territory_type",
+    "territory_id",
+    "sensor",
+    "source_product",
+    "fire_pixels_nominal_high",
+    "fire_pixels_low",
+    "valid_land_pixels",
+    "expected_land_pixels_per_day",
+    "observation_coverage",
+    "t_amb_c",
+    "relative_humidity_2m_pct",
+    "t_suelo_c",
+    "lst_valid_pixel_pct",
+    "wind_dir_deg",
+    "wind_speed_10m_ms",
+    "elevation_m",
+    "dem_source",
+    "data_origin",
+  ];
+  return toCsv(
+    header,
+    rows.map((d) => [
+      d.date,
+      territoryType,
+      territoryId,
+      sensor,
+      PRODUCTS[sensor] ?? "",
+      d.detections,
+      d.fire_pixels_low ?? "",
+      d.valid_land_pixels ?? "",
+      d.expected_land_pixels_per_day ?? "",
+      d.observation_coverage.toFixed(3),
+      d.t_amb_c ?? "",
+      d.relative_humidity_2m_pct ?? "",
+      // Vacío cuando hay más de 30 % de nubes: nunca cero.
+      d.t_suelo_c ?? "",
+      d.lst_valid_pixel_pct ?? "",
+      d.wind_dir_deg ?? "",
+      d.wind_speed_10m_ms ?? "",
+      d.elevation_m ?? "",
+      d.dem_source ?? "",
       origin,
     ])
   );
@@ -86,7 +148,7 @@ export function calendarCsv(cells: MonthCell[], sensor: string, origin: string):
   );
 }
 
-/** GeoJSON del area de interes dibujada. */
+/** GeoJSON del área de interés dibujada. */
 export function ringGeoJson(ring: [number, number][], areaKm2: number): string {
   return JSON.stringify(
     {

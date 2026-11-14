@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -10,7 +11,7 @@ import {
 } from "recharts";
 import type { DayPoint, MonthCell, Sensor } from "../api/types";
 import { SENSORS, SENSOR_META } from "../api/types";
-import { rampCss } from "../lib/spread";
+import { cividisCss } from "../lib/palette";
 
 const M_SHORT = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
 const M_FULL = [
@@ -28,6 +29,8 @@ interface Props {
   daily: DayPoint[];
   areaLabel: string;
   onHide: () => void;
+  selectedDate: string;
+  onPickDay: (day: number) => void;
 }
 
 export function CalendarStrip(p: Props) {
@@ -114,7 +117,7 @@ export function CalendarStrip(p: Props) {
             <div className="legend__title">Detecciones (clases 8–9)</div>
             <div className="legend__ramp">
               {Array.from({ length: 24 }, (_, i) => (
-                <i key={i} style={{ background: rampCss(i / 23) }} />
+                <i key={i} style={{ background: cividisCss(i / 23) }} />
               ))}
             </div>
             <div className="legend__scale">
@@ -127,6 +130,9 @@ export function CalendarStrip(p: Props) {
           <div className="calstrip__chart">
             <div className="legend__title">
               Serie diaria · {M_FULL[month - 1]} {year} · {p.areaLabel}
+              <span style={{ color: "var(--acid)", marginLeft: 8 }}>
+                día {p.selectedDate.slice(8)}
+              </span>
             </div>
             <ResponsiveContainer width="100%" height={92}>
               <BarChart data={p.daily} margin={{ top: 6, right: 4, bottom: 0, left: -24 }}>
@@ -143,8 +149,25 @@ export function CalendarStrip(p: Props) {
                   cursor={{ fill: "rgba(216,255,51,0.08)" }}
                   labelFormatter={(d: string) => `Día ${d}`}
                   formatter={(v: number) => [v.toLocaleString("es-PE"), "Detecciones"]}
+                  labelStyle={{ color: "var(--fg-dim)" }}
                 />
-                <Bar dataKey="detections" fill={SENSOR_META[p.sensor].color} isAnimationActive={false} />
+                <Bar
+                  dataKey="detections"
+                  isAnimationActive={false}
+                  cursor="pointer"
+                  onClick={(d: { date?: string }) =>
+                    d?.date && p.onPickDay(Number(d.date.slice(8)))
+                  }
+                >
+                  {p.daily.map((d) => (
+                    <Cell
+                      key={d.date}
+                      fill={
+                        d.date === p.selectedDate ? "var(--acid)" : SENSOR_META[p.sensor].color
+                      }
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -210,7 +233,7 @@ function MonthRow({
             key={year}
             className="cal__cell"
             data-selected={isSel}
-            style={{ background: rampCss(tone(cell.detections)) }}
+            style={{ background: cividisCss(tone(cell.detections)) }}
             onClick={() => onPick(year, m)}
             title={
               `${M_FULL[monthIndex]} ${year}\n` +

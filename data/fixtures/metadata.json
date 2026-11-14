@@ -1,0 +1,144 @@
+{
+  "schema_version": "1.0",
+  "data_origin": "fixture",
+  "notice": "DATOS FICTICIOS (fixture). No usar como evidencia ni en la presentación.",
+  "generated_at": "2026-11-14T00:00:00Z",
+  "processing_version": "fixture-0.1.0",
+  "territory_types": [
+    "province",
+    "hydro_unit"
+  ],
+  "sensors": [
+    {
+      "id": "MODIS_TERRA",
+      "product": "MOD14A1",
+      "overpass_local": "~10:30",
+      "available_since": "2000-02",
+      "resolution": "1 km"
+    },
+    {
+      "id": "MODIS_AQUA",
+      "product": "MYD14A1",
+      "overpass_local": "~13:30",
+      "available_since": "2002-07",
+      "resolution": "1 km"
+    },
+    {
+      "id": "VIIRS_SNPP",
+      "product": "VNP14A1",
+      "overpass_local": "~13:30",
+      "available_since": "2012-01",
+      "resolution": "1 km"
+    }
+  ],
+  "available_periods_by_sensor": {
+    "MODIS_TERRA": [
+      "2026-09"
+    ],
+    "MODIS_AQUA": [
+      "2026-09"
+    ],
+    "VIIRS_SNPP": [
+      "2026-09"
+    ]
+  },
+  "available_date_ranges_by_sensor": {
+    "MODIS_TERRA": [
+      {
+        "from": "2026-09-01",
+        "to": "2026-09-30"
+      }
+    ],
+    "MODIS_AQUA": [
+      {
+        "from": "2026-09-01",
+        "to": "2026-09-30"
+      }
+    ],
+    "VIIRS_SNPP": [
+      {
+        "from": "2026-09-01",
+        "to": "2026-09-30"
+      }
+    ]
+  },
+  "common_environmental_periods": [
+    "2026-09"
+  ],
+  "common_environmental_dates": [
+    {
+      "from": "2026-09-01",
+      "to": "2026-09-30"
+    }
+  ],
+  "common_analysis_periods": [
+    "2026-09"
+  ],
+  "common_analysis_dates": [
+    {
+      "from": "2026-09-01",
+      "to": "2026-09-30"
+    }
+  ],
+  "metrics": {
+    "activity": [
+      "activity_rate",
+      "fire_pixel_days_8_9",
+      "active_days",
+      "max_consecutive_active_days",
+      "observation_coverage"
+    ],
+    "environmental": [
+      "t_amb_c",
+      "t_suelo_c",
+      "wind_dir_deg",
+      "wind_speed_10m_ms",
+      "elevation_m"
+    ],
+    "classification": [
+      "conditions_classification"
+    ]
+  },
+  "units": {
+    "activity_rate": "píxeles-día detectados / píxeles-día válidos (adimensional)",
+    "observation_coverage": "fracción 0–1",
+    "fire_pixel_days_8_9": "píxeles-día",
+    "t_amb_c": "°C",
+    "t_suelo_c": "°C",
+    "wind_dir_deg": "grados (0–360, desde dónde sopla)",
+    "wind_speed_10m_ms": "m/s",
+    "elevation_m": "m s.n.m."
+  },
+  "dem_by_epoch": [
+    {
+      "epoch": "2000-2011",
+      "applies_to": "MODIS",
+      "dem_source": "NASADEM_HGT_001 / USGS_SRTMGL1_003",
+      "resolution": "30 m"
+    },
+    {
+      "epoch": "2012-presente",
+      "applies_to": "VIIRS",
+      "dem_source": "COPERNICUS_DEM_GLO30",
+      "resolution": "30 m"
+    }
+  ],
+  "environmental_sources": {
+    "t_amb_c": "ECMWF/ERA5_LAND/HOURLY (temperature_2m)",
+    "t_suelo_c": "MODIS/061/MOD11A1, MYD11A1; NASA/VIIRS/002/VNP21A1D, VNP21A1N",
+    "wind": "ECMWF/ERA5_LAND/HOURLY (u/v_component_of_wind_10m)"
+  },
+  "parameters": {
+    "min_observation_coverage_for_comparison": 0.5,
+    "elevated_signal_robust_z": 2.0,
+    "min_baseline_years": 5,
+    "umbral_veg_pct": null,
+    "umbral_pend_pct": null,
+    "note": "Umbrales de fixture; los reales los definen Tom y Angelo."
+  },
+  "limitations": [
+    "activity_rate no es probabilidad de incendio ni superficie quemada.",
+    "No se suman conteos entre sensores.",
+    "La susceptibilidad contextual es cualitativa, no un índice validado de riesgo."
+  ]
+}

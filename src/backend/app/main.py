@@ -858,6 +858,12 @@ def _dispatch_spread_request(
         raise ApiError(400, "INVALID_PARAMETER", "horizon_h debe estar entre 6 y 48 horas")
 
     r_open_meteo = bool(body["use_open_meteo"]) if "use_open_meteo" in body else use_open_meteo
+    if r_open_meteo and not _realtime_enabled():
+        raise ApiError(
+            403,
+            "REALTIME_DISABLED",
+            "use_open_meteo requiere MCHANAQ_ENABLE_REALTIME=1 (desactivado por defecto; ver AGENTS.md).",
+        )
     return _run_phase2_simulation(
         t_type=str(body.get("territory_type") or "custom"),
         t_id=str(body.get("territory_id") or "custom"),
@@ -1092,6 +1098,14 @@ def _fetch_firms_source(
         return [], str(exc)
 
 
+def _realtime_enabled() -> bool:
+    """AGENTS.md: el backend oficial no consulta almacenamiento/APIs externas por
+    petición HTTP. Estos endpoints de tiempo real son una excepción explícita de
+    Fase 2, así que quedan apagados por defecto y solo se activan a propósito
+    con MCHANAQ_ENABLE_REALTIME=1 (por ejemplo, para una demo en vivo)."""
+    return os.getenv("MCHANAQ_ENABLE_REALTIME", "").strip().lower() in {"1", "true", "yes"}
+
+
 @app.get("/api/v1/realtime/area")
 def realtime_area(
     south: float = Query(..., ge=-90.0, le=90.0),
@@ -1101,6 +1115,25 @@ def realtime_area(
     days: int = Query(3, ge=1, le=10),
 ):
     """Consulta en tiempo real clima global (Open-Meteo) y focos activos MODIS/VIIRS (NASA FIRMS) para cualquier bbox del mundo."""
+    if not _realtime_enabled():
+        return {
+            "schema_version": "1.0",
+            "bbox": {"south": south, "west": west, "north": north, "east": east},
+            "days": days,
+            "weather": {"status": "disabled", "source": "Open-Meteo"},
+            "hotspots_status": "realtime_disabled",
+            "counts_by_sensor": {},
+            "hotspots": {"type": "FeatureCollection", "features": []},
+            "realtime_setup": {
+                "env_var": "MCHANAQ_ENABLE_REALTIME",
+                "note": (
+                    "Este endpoint consulta APIs externas (Open-Meteo, NASA FIRMS) por "
+                    "petición HTTP, lo cual está desactivado por defecto para cumplir la "
+                    "regla de arquitectura de AGENTS.md. Actívalo explícitamente con "
+                    "MCHANAQ_ENABLE_REALTIME=1 solo si el equipo decide usarlo (ej. demo en vivo)."
+                ),
+            },
+        }
     if south >= north or west >= east:
         raise ApiError(400, "INVALID_PARAMETER", "Bounding box inválido: requiere south < north y west < east")
 

@@ -1,3 +1,17 @@
 # Dependencias de ejecución del backend FastAPI para Oryx / Azure App Service
 fastapi>=0.115.0,<1.0.0
 uvicorn[standard]>=0.30.0,<1.0.0
+
+# Fase 2 (opcional): tiempo real (Open-Meteo/NASA FIRMS) y simulación de propagación.
+# httpx es obligatorio: main.py lo importa a nivel de módulo, sin él el backend
+# completo no arranca (no solo los endpoints de Fase 2).
+httpx>=0.27.0,<1.0.0
+# shapely/numpy/geopandas solo se importan de forma diferida (dentro de las
+# funciones de spread_model), así que su ausencia no tumba el arranque, pero
+# sí rompe esos endpoints en cuanto se llaman. ADVERTENCIA: geopandas depende
+# de GDAL/fiona/pyproj; probar expresamente el build en Azure App Service
+# Free F1 antes de mergear a main — si el build falla o se pasa de tiempo/
+# memoria, aislar Fase 2 a otro servicio en vez de forzarlo aquí.
+shapely>=2.0.0,<3.0.0
+numpy>=1.26.0,<2.0.0
+geopandas>=0.14.0,<1.0.0

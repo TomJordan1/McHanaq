@@ -12,8 +12,16 @@ export PYTHONPATH="${PYTHONPATH:-}:."
 # Sincronización opcional única al arranque si se configuró Azure Blob Storage y faltan archivos locales
 if [[ -n "${AZURE_BLOB_SAS_BASE_URL:-}" || ( -n "${AZURE_STORAGE_ACCOUNT:-}" && -n "${AZURE_STORAGE_CONTAINER:-}" ) ]]; then
   if [[ ! -s "${MCHANAQ_DATA_DIR}/metadata.json" || ! -s "${MCHANAQ_DATA_DIR}/activity_daily.json" ]]; then
-    echo "[mchanaq-startup] Sincronizando snapshot inicial hacia ${MCHANAQ_DATA_DIR}..."
+    echo "[mchanaq-startup] Sincronizando snapshot inicial desde Azure Blob hacia ${MCHANAQ_DATA_DIR}..."
     python -m src.analytics.azure_sync download --target "${MCHANAQ_DATA_DIR}" --if-missing
+  fi
+fi
+
+# Sincronización opcional única al arranque si se configuró Cloudflare R2 y faltan archivos locales
+if [[ -n "${R2_PUBLIC_BASE_URL:-}" ]]; then
+  if [[ ! -s "${MCHANAQ_DATA_DIR}/metadata.json" || ! -s "${MCHANAQ_DATA_DIR}/activity_daily.json" ]]; then
+    echo "[mchanaq-startup] Sincronizando snapshot inicial desde Cloudflare R2 hacia ${MCHANAQ_DATA_DIR}..."
+    python -m src.analytics.r2_sync download --target "${MCHANAQ_DATA_DIR}" --if-missing
   fi
 fi
 

@@ -43,13 +43,6 @@ export const TEAM: Member[] = [
     branch: "feature/analytics-engine",
   },
   {
-    slug: "jhan",
-    name: "Jhan",
-    role: "Backend e integración",
-    blurb: "Construye la API de solo lectura y mantiene el contrato entre módulos.",
-    branch: "feature/api-backend",
-  },
-  {
     slug: "sebastian",
     name: "Sebastian",
     role: "Interfaz y experiencia",

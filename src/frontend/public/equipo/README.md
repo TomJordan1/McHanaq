@@ -7,7 +7,6 @@ la página la detecta sola al recargar.
 |---|---|
 | Angelo | `angelo.jpg` |
 | Tom | `tom.jpg` |
-| Jhan | `jhan.jpg` |
 | Sebastian | `sebastian.jpg` |
 | Jean Pierrer | `jean-pierrer.jpg` |
 
